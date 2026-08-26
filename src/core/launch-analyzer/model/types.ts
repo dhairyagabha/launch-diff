@@ -83,6 +83,7 @@ export type MatchMethod =
   | "launch-resource-id"
   | "launch-child-id"
   | "exact-signature"
+  | "file-id-fallback"
   | "fuzzy"
   | "unmatched";
 
@@ -173,7 +174,7 @@ export interface ResolvedLibrary {
   completeness: AnalysisCompleteness;
 }
 
-export type ChangeStatus = "added" | "removed" | "modified" | "unchanged";
+export type ChangeStatus = "added" | "removed" | "modified" | "unchanged" | "unknown";
 
 export interface ResourceComparison {
   base?: LaunchResource;

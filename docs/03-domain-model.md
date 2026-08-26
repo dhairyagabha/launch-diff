@@ -130,6 +130,7 @@ export type MatchMethod =
   | "launch-resource-id"
   | "launch-child-id"
   | "exact-signature"
+  | "file-id-fallback"
   | "fuzzy"
   | "unmatched";
 
@@ -144,6 +145,8 @@ export interface MatchProvenance {
 ```
 
 Top-level matched resources must use `launch-resource-id` only.
+`file-id-fallback` is reserved for parser-marked unmapped canonical-source resources and must not
+be used to imply a semantic Launch resource relationship.
 
 ## Data Element reference
 
@@ -201,7 +204,12 @@ export interface ResolvedLibrary {
 ## Comparison status
 
 ```ts
-export type ChangeStatus = "added" | "removed" | "modified" | "unchanged";
+export type ChangeStatus =
+  | "added"
+  | "removed"
+  | "modified"
+  | "unchanged"
+  | "unknown";
 
 export interface ResourceComparison {
   base?: LaunchResource;
@@ -214,6 +222,9 @@ export interface ResourceComparison {
   detailedDiff?: DetailedDiff;
 }
 ```
+
+`unknown` means LaunchDiff cannot prove Added/Removed because a counterpart side has unresolved,
+skipped, or unsupported files.
 
 ## Impact
 

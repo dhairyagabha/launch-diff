@@ -131,6 +131,9 @@ describe("current Launch parser", () => {
     });
     expect(library.resources).toHaveLength(1);
     expect(library.resources[0]?.identity.resourceType).toBe("unmapped");
+    expect(library.resources[0]?.metadata).toMatchObject({
+      fallbackKind: "canonical-source"
+    });
     expect(library.resources[0]?.normalizedSource).toBe(source);
   });
 });

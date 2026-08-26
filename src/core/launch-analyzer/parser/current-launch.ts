@@ -110,6 +110,9 @@ export function parseCurrentLaunchLibrary(input: CurrentLaunchParseInput): Resol
           raw: input.source,
           normalizedSource: input.source,
           fileIds: [fileId],
+          metadata: {
+            fallbackKind: "canonical-source"
+          },
           warnings: [warning.id]
         })
       ],

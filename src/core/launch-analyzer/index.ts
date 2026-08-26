@@ -37,7 +37,12 @@ export {
   extractPercentTokenReferences,
   resourceGraphId
 } from "./dependencies/data-elements";
+export {
+  compareResolvedLibraries,
+  validateComparableProperties
+} from "./comparison/engine";
 export type * from "./fetcher/resource-fetcher";
+export type * from "./comparison/engine";
 export type * from "./dependencies/data-elements";
 export type * from "./fixtures/manifest";
 export type * from "./matcher/resources";
