@@ -27,9 +27,9 @@ describe("detailed diff engine", () => {
 
     expect(changedRow?.base?.oldLineNumber).toBe(1);
     expect(changedRow?.compare?.newLineNumber).toBe(1);
-    expect(changedRow?.base?.tokens?.filter((token) => token.changed).map((token) => token.value)).toContain(
-      "41"
-    );
+    expect(
+      changedRow?.base?.tokens?.filter((token) => token.changed).map((token) => token.value)
+    ).toContain("41");
     expect(
       changedRow?.compare?.tokens?.filter((token) => token.changed).map((token) => token.value)
     ).toContain("42");
@@ -49,6 +49,13 @@ describe("detailed diff engine", () => {
 
     expect(diff.hunks.some((hunk) => hunk.collapsed && hunk.oldLines > 0)).toBe(true);
     expect(diff.hunks.filter((hunk) => !hunk.collapsed)).toHaveLength(2);
+    expect(diff.hunks.find((hunk) => hunk.collapsed)?.hiddenRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          changed: false
+        })
+      ])
+    );
   });
 
   it("uses full-file rows for added and removed resources", () => {
@@ -76,7 +83,7 @@ describe("detailed diff engine", () => {
       expect.arrayContaining([
         { value: "const", kind: "keyword" },
         { value: "name", kind: "identifier" },
-        { value: "\"Launch\"", kind: "string" },
+        { value: '"Launch"', kind: "string" },
         { value: "// keep", kind: "comment" }
       ])
     );

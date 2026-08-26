@@ -134,7 +134,8 @@ export function populateDetailedDiffs(
   for (const item of queue) {
     const comparison = comparisons[item.comparisonIndex]!;
     const cached = options.cache?.get(item.cacheKey);
-    const detailedDiff = cached ?? buildDetailedDiff(comparisonToDetailedDiffInput(comparison, options));
+    const detailedDiff =
+      cached ?? buildDetailedDiff(comparisonToDetailedDiffInput(comparison, options));
 
     options.cache?.set(item.cacheKey, detailedDiff);
     generated.set(item.comparisonIndex, detailedDiff);
@@ -222,7 +223,7 @@ function shouldGenerateDetailedDiff(comparison: ResourceComparison): boolean {
 
   return Boolean(
     (comparison.base && resourceSource(comparison.base) !== undefined) ||
-      (comparison.compare && resourceSource(comparison.compare) !== undefined)
+    (comparison.compare && resourceSource(comparison.compare) !== undefined)
   );
 }
 
@@ -253,10 +254,7 @@ function comparisonFileId(comparison: ResourceComparison): string {
   return fileId ?? comparisonResourceKey(comparison);
 }
 
-function detectDiffLanguage(
-  baseSource?: string,
-  compareSource?: string
-): DetailedDiff["language"] {
+function detectDiffLanguage(baseSource?: string, compareSource?: string): DetailedDiff["language"] {
   const source = (compareSource ?? baseSource ?? "").trim();
 
   if (!source) {
@@ -280,9 +278,7 @@ function splitSourceLines(source: string | undefined): string[] {
   }
 
   const normalized = source.replace(/\r\n?/g, "\n");
-  const withoutFinalNewline = normalized.endsWith("\n")
-    ? normalized.slice(0, -1)
-    : normalized;
+  const withoutFinalNewline = normalized.endsWith("\n") ? normalized.slice(0, -1) : normalized;
 
   return withoutFinalNewline === "" ? [] : withoutFinalNewline.split("\n");
 }
@@ -350,18 +346,11 @@ function buildLcsMatrix(baseLines: string[], compareLines: string[]): number[][]
   );
 
   for (let baseIndex = baseLines.length - 1; baseIndex >= 0; baseIndex -= 1) {
-    for (
-      let compareIndex = compareLines.length - 1;
-      compareIndex >= 0;
-      compareIndex -= 1
-    ) {
+    for (let compareIndex = compareLines.length - 1; compareIndex >= 0; compareIndex -= 1) {
       matrix[baseIndex]![compareIndex] =
         baseLines[baseIndex] === compareLines[compareIndex]
           ? matrix[baseIndex + 1]![compareIndex + 1]! + 1
-          : Math.max(
-              matrix[baseIndex + 1]![compareIndex]!,
-              matrix[baseIndex]![compareIndex + 1]!
-            );
+          : Math.max(matrix[baseIndex + 1]![compareIndex]!, matrix[baseIndex]![compareIndex + 1]!);
     }
   }
 
@@ -522,6 +511,7 @@ function createHunk(
     newLines: newNumbers.length,
     lines: collapsed ? [] : flattenRowsToLines(segmentRows),
     rows: collapsed ? [] : segmentRows,
+    ...(collapsed ? { hiddenRows: segmentRows } : {}),
     collapsed
   };
 }
@@ -564,7 +554,10 @@ function mergeRanges(ranges: Array<{ start: number; end: number }>): Array<{
   return merged;
 }
 
-function diffInlineTokens(base: string, compare: string): {
+function diffInlineTokens(
+  base: string,
+  compare: string
+): {
   base: DiffToken[];
   compare: DiffToken[];
 } {
@@ -679,7 +672,7 @@ function tokenizeCodeLikeLine(content: string, keywords: Set<string>): SyntaxTok
       continue;
     }
 
-    if (character === "\"" || character === "'" || character === "`") {
+    if (character === '"' || character === "'" || character === "`") {
       const value = consumeQuotedString(content, index, character);
       tokens.push({ value, kind: "string" });
       index += value.length;
@@ -899,7 +892,9 @@ function pairFunctionFolds(
     if (baseMatches.length === 1 && compareMatches.length === 1) {
       const compareFunction = compareMatches[0]!;
       consumedCompare.add(compareFunction);
-      folds.push(createFunctionFold(baseFunction, compareFunction, baseChangedLines, compareChangedLines));
+      folds.push(
+        createFunctionFold(baseFunction, compareFunction, baseChangedLines, compareChangedLines)
+      );
       continue;
     }
 
@@ -908,7 +903,9 @@ function pairFunctionFolds(
 
   for (const compareFunction of compareFunctions) {
     if (!consumedCompare.has(compareFunction)) {
-      folds.push(createFunctionFold(undefined, compareFunction, baseChangedLines, compareChangedLines));
+      folds.push(
+        createFunctionFold(undefined, compareFunction, baseChangedLines, compareChangedLines)
+      );
     }
   }
 
@@ -923,13 +920,9 @@ function createFunctionFold(
 ): FunctionFold {
   const containsChanges = Boolean(
     (baseFunction && rangeContainsAny(baseFunction.range, baseChangedLines)) ||
-      (compareFunction && rangeContainsAny(compareFunction.range, compareChangedLines))
+    (compareFunction && rangeContainsAny(compareFunction.range, compareChangedLines))
   );
-  const id = [
-    "fold",
-    baseFunction?.id ?? "none",
-    compareFunction?.id ?? "none"
-  ].join(":");
+  const id = ["fold", baseFunction?.id ?? "none", compareFunction?.id ?? "none"].join(":");
 
   return {
     id,
@@ -973,10 +966,7 @@ function foldContains(parent: FunctionFold, child: FunctionFold): boolean {
     return false;
   }
 
-  return (
-    parentRange.startLine < childRange.startLine &&
-    parentRange.endLine >= childRange.endLine
-  );
+  return parentRange.startLine < childRange.startLine && parentRange.endLine >= childRange.endLine;
 }
 
 function foldPrimaryRange(fold: FunctionFold): SourceLineRange | undefined {

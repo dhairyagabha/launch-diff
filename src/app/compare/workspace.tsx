@@ -1,0 +1,1786 @@
+"use client";
+
+import {
+  AlertIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ArrowSwitchIcon,
+  CheckCircleIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  DownloadIcon,
+  EyeClosedIcon,
+  EyeIcon,
+  FileCodeIcon,
+  FilterIcon,
+  QuestionIcon,
+  SearchIcon,
+  StopIcon,
+  SyncIcon,
+  UploadIcon,
+  XCircleIcon,
+  XIcon
+} from "@primer/octicons-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type Dispatch,
+  type FormEvent,
+  type RefObject,
+  type SetStateAction
+} from "react";
+import {
+  AnalysisAlreadyRunningError,
+  AnalyzerWorkerClient,
+  createBrowserAnalysisConcurrencyCoordinator,
+  loadSessionConfig,
+  saveSessionConfig,
+  type BrowserAnalysisProgress
+} from "@/browser/analyzer";
+import {
+  parseLaunchDiffConfig,
+  type ComparisonResult,
+  type DiffLine,
+  type FunctionFold,
+  type LaunchDiffConfig,
+  type ResourceComparison,
+  type ResourceType,
+  type ResolvedFile,
+  type SplitDiffRow,
+  type SyntaxToken
+} from "@/core/launch-analyzer";
+import {
+  comparisonCounts,
+  comparisonDisplayName,
+  comparisonResourceKey,
+  completenessBanner,
+  fileDisplayName,
+  groupResourceComparisons,
+  reviewProgress,
+  resourceTypeLabel,
+  statusLabel,
+  type ResultTab,
+  type StatusFilter,
+  type TypeFilter
+} from "./workspace-model";
+
+type SetupMode = "direct" | "config";
+type WorkspacePhase = "setup" | "running" | "ready";
+type AnalysisAction = "analyze" | "retry" | "refresh";
+
+interface AnalysisUrls {
+  baseUrl: string;
+  compareUrl: string;
+}
+
+const STATUS_FILTERS: Array<{ value: StatusFilter; label: string }> = [
+  { value: "all", label: "All statuses" },
+  { value: "modified", label: "Modified" },
+  { value: "added", label: "Added" },
+  { value: "removed", label: "Removed" },
+  { value: "unknown", label: "Unknown" },
+  { value: "unchanged", label: "Unchanged" },
+  { value: "impacted", label: "Impacted" }
+];
+
+const TYPE_FILTERS: Array<{ value: TypeFilter; label: string }> = [
+  { value: "all", label: "All resource types" },
+  { value: "rule", label: "Rules" },
+  { value: "data-element", label: "Data Elements" },
+  { value: "extension", label: "Extensions" },
+  { value: "runtime", label: "Runtime" },
+  { value: "unmapped", label: "Unmapped" }
+];
+
+const RESULT_TABS: Array<{ id: ResultTab; label: string }> = [
+  { id: "files", label: "Files Changed" },
+  { id: "impacted", label: "Impacted" },
+  { id: "resolved", label: "Resolved Files" },
+  { id: "notes", label: "Release Notes" }
+];
+
+const PHASE_LABELS: Record<BrowserAnalysisProgress["phase"], string> = {
+  "fetching-canonical": "Fetching canonical libraries",
+  parsing: "Parsing Launch containers",
+  "resolving-deferred": "Resolving deferred Launch resources",
+  normalizing: "Normalizing deployed artifacts",
+  matching: "Matching resources",
+  "dependency-analysis": "Building dependency graph",
+  comparing: "Comparing resources",
+  "preparing-diffs": "Preparing detailed diffs",
+  complete: "Complete"
+};
+
+function createWorkerClient(): AnalyzerWorkerClient {
+  return new AnalyzerWorkerClient(
+    new Worker(new URL("../../workers/analyzer.worker.ts", import.meta.url), {
+      type: "module"
+    })
+  );
+}
+
+export function CompareWorkspace() {
+  const [phase, setPhase] = useState<WorkspacePhase>("setup");
+  const [setupMode, setSetupMode] = useState<SetupMode>("direct");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [compareUrl, setCompareUrl] = useState("");
+  const [config, setConfig] = useState<LaunchDiffConfig>();
+  const [selectedSiteName, setSelectedSiteName] = useState("");
+  const [baseEnvironmentName, setBaseEnvironmentName] = useState("");
+  const [compareEnvironmentName, setCompareEnvironmentName] = useState("");
+  const [comparison, setComparison] = useState<ComparisonResult>();
+  const [progress, setProgress] = useState<BrowserAnalysisProgress>();
+  const [error, setError] = useState<string>();
+  const [activeTab, setActiveTab] = useState<ResultTab>("files");
+  const [selectedResourceKey, setSelectedResourceKey] = useState<string>();
+  const [viewedResourceKeys, setViewedResourceKeys] = useState<Set<string>>(() => new Set());
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [showUnchanged, setShowUnchanged] = useState(false);
+  const [expandedHunkIds, setExpandedHunkIds] = useState<Set<string>>(() => new Set());
+  const [collapsedFoldIds, setCollapsedFoldIds] = useState<Set<string>>(() => new Set());
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const workerClientRef = useRef<AnalyzerWorkerClient | undefined>(undefined);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const selectedSite = config?.sites.find((site) => site.name === selectedSiteName);
+  const counts = useMemo(
+    () => (comparison ? comparisonCounts(comparison) : undefined),
+    [comparison]
+  );
+  const progressCount = useMemo(
+    () => (comparison ? reviewProgress(comparison, viewedResourceKeys) : { reviewed: 0, total: 0 }),
+    [comparison, viewedResourceKeys]
+  );
+  const visibleGroups = useMemo(
+    () =>
+      comparison
+        ? groupResourceComparisons(comparison.resources, {
+            query,
+            status: statusFilter,
+            type: typeFilter,
+            showUnchanged,
+            viewedResourceKeys
+          })
+        : [],
+    [comparison, query, showUnchanged, statusFilter, typeFilter, viewedResourceKeys]
+  );
+  const visibleResourceKeys = useMemo(
+    () => visibleGroups.flatMap((group) => group.resources.map(comparisonResourceKey)),
+    [visibleGroups]
+  );
+  const changedResourceKeys = useMemo(
+    () =>
+      comparison?.resources
+        .filter((resource) => isReviewableStatus(resource.status))
+        .map(comparisonResourceKey) ?? [],
+    [comparison]
+  );
+  const selectedComparison = useMemo(
+    () =>
+      comparison?.resources.find(
+        (resource) => comparisonResourceKey(resource) === selectedResourceKey
+      ) ?? visibleGroups[0]?.resources[0],
+    [comparison, selectedResourceKey, visibleGroups]
+  );
+  const selectedDiff = selectedComparison?.detailedDiff;
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      try {
+        const storedConfig = loadSessionConfig();
+
+        if (!storedConfig) {
+          return;
+        }
+
+        setConfig(storedConfig);
+        setSetupMode("config");
+        applyDefaultConfigSelection(storedConfig, {
+          setSelectedSiteName,
+          setBaseEnvironmentName,
+          setCompareEnvironmentName
+        });
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error ? loadError.message : "Saved config could not be loaded."
+        );
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      workerClientRef.current?.terminate();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!comparison) {
+      return;
+    }
+
+    queueMicrotask(() => {
+      if (!selectedResourceKey || !visibleResourceKeys.includes(selectedResourceKey)) {
+        setSelectedResourceKey(
+          visibleResourceKeys[0] ??
+            (comparison.resources[0] ? comparisonResourceKey(comparison.resources[0]) : undefined)
+        );
+      }
+    });
+  }, [comparison, selectedResourceKey, visibleResourceKeys]);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      if (!selectedDiff) {
+        setCollapsedFoldIds(new Set());
+        return;
+      }
+
+      setCollapsedFoldIds(
+        new Set(
+          flattenFunctionFolds(selectedDiff.functionFolds)
+            .filter((fold) => fold.collapsedByDefault)
+            .map((fold) => fold.id)
+        )
+      );
+      setExpandedHunkIds(new Set());
+    });
+  }, [selectedDiff]);
+
+  const navigateResource = useCallback(
+    (direction: "next" | "previous") => {
+      const keys = visibleResourceKeys.length > 0 ? visibleResourceKeys : changedResourceKeys;
+
+      if (keys.length === 0) {
+        return;
+      }
+
+      const currentIndex = Math.max(0, keys.indexOf(selectedResourceKey ?? keys[0]!));
+      const nextIndex =
+        direction === "next"
+          ? Math.min(keys.length - 1, currentIndex + 1)
+          : Math.max(0, currentIndex - 1);
+      setSelectedResourceKey(keys[nextIndex]);
+    },
+    [changedResourceKeys, selectedResourceKey, visibleResourceKeys]
+  );
+
+  const navigateTab = useCallback(
+    (direction: "next" | "previous") => {
+      const currentIndex = RESULT_TABS.findIndex((tab) => tab.id === activeTab);
+      const nextIndex =
+        direction === "next"
+          ? Math.min(RESULT_TABS.length - 1, currentIndex + 1)
+          : Math.max(0, currentIndex - 1);
+      setActiveTab(RESULT_TABS[nextIndex]!.id);
+    },
+    [activeTab]
+  );
+
+  const toggleSelectedViewed = useCallback(() => {
+    if (!selectedComparison) {
+      return;
+    }
+
+    const key = comparisonResourceKey(selectedComparison);
+    setViewedResourceKeys((current) => {
+      const next = new Set(current);
+
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+
+      return next;
+    });
+  }, [selectedComparison]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const isTyping =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement;
+
+      if (isTyping && event.key !== "Escape") {
+        return;
+      }
+
+      if (event.key === "?") {
+        event.preventDefault();
+        setShowKeyboardHelp((current) => !current);
+        return;
+      }
+
+      if (event.key === "Escape") {
+        if (showKeyboardHelp) {
+          setShowKeyboardHelp(false);
+        } else {
+          setQuery("");
+        }
+        return;
+      }
+
+      if (!comparison) {
+        return;
+      }
+
+      if (event.key === "j" || event.key === "n") {
+        event.preventDefault();
+        navigateResource("next");
+        return;
+      }
+
+      if (event.key === "k" || event.key === "p") {
+        event.preventDefault();
+        navigateResource("previous");
+        return;
+      }
+
+      if (event.key === "v") {
+        event.preventDefault();
+        toggleSelectedViewed();
+        return;
+      }
+
+      if (event.key === "f") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+
+      if (event.key === "]") {
+        event.preventDefault();
+        navigateTab("next");
+        return;
+      }
+
+      if (event.key === "[") {
+        event.preventDefault();
+        navigateTab("previous");
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [comparison, navigateResource, navigateTab, showKeyboardHelp, toggleSelectedViewed]);
+
+  function resolveUrls(): { ok: true; urls: AnalysisUrls } | { ok: false; message: string } {
+    if (setupMode === "config") {
+      const site = config?.sites.find((candidate) => candidate.name === selectedSiteName);
+      const baseEnvironment = site?.environments.find(
+        (environment) => environment.name === baseEnvironmentName
+      );
+      const compareEnvironment = site?.environments.find(
+        (environment) => environment.name === compareEnvironmentName
+      );
+
+      if (!site || !baseEnvironment || !compareEnvironment) {
+        return { ok: false, message: "Choose a site and two environments before comparing." };
+      }
+
+      return validateAnalysisUrls(baseEnvironment.url, compareEnvironment.url);
+    }
+
+    return validateAnalysisUrls(baseUrl, compareUrl);
+  }
+
+  async function runAnalysis(action: AnalysisAction = "analyze") {
+    const resolvedUrls = resolveUrls();
+
+    if (!resolvedUrls.ok) {
+      setError(resolvedUrls.message);
+      return;
+    }
+
+    setError(undefined);
+    setProgress(undefined);
+    setCopyState("idle");
+    setPhase("running");
+
+    const client = workerClientRef.current ?? createWorkerClient();
+    workerClientRef.current = client;
+    const coordinator = createBrowserAnalysisConcurrencyCoordinator();
+
+    try {
+      const result = await coordinator.runExclusive(() => {
+        const input = {
+          ...resolvedUrls.urls,
+          selectedResourceKey
+        };
+
+        if (action === "retry") {
+          return client.retryFailedResources(input, setProgress);
+        }
+
+        if (action === "refresh") {
+          return client.refreshLibraries(input, setProgress);
+        }
+
+        return client.analyze(input, setProgress);
+      });
+
+      const initialResource = pickInitialResource(result);
+      setComparison(result);
+      setViewedResourceKeys(new Set());
+      setSelectedResourceKey(initialResource ? comparisonResourceKey(initialResource) : undefined);
+      setActiveTab("files");
+      setPhase("ready");
+    } catch (analysisError) {
+      if (analysisError instanceof AnalysisAlreadyRunningError) {
+        setError(
+          "Another comparison is already running in this browser. Wait for it to finish, then retry."
+        );
+      } else {
+        setError(analysisError instanceof Error ? analysisError.message : "Analysis failed.");
+      }
+
+      setPhase(comparison ? "ready" : "setup");
+    } finally {
+      coordinator.close();
+      setProgress(undefined);
+    }
+  }
+
+  function cancelAnalysis() {
+    workerClientRef.current?.cancel();
+  }
+
+  async function handleConfigFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const parsed = parseLaunchDiffConfig(JSON.parse(await file.text()));
+      saveSessionConfig(parsed);
+      setConfig(parsed);
+      setSetupMode("config");
+      applyDefaultConfigSelection(parsed, {
+        setSelectedSiteName,
+        setBaseEnvironmentName,
+        setCompareEnvironmentName
+      });
+      setError(undefined);
+    } catch (configError) {
+      setError(
+        configError instanceof Error ? configError.message : "Config file could not be parsed."
+      );
+    } finally {
+      event.currentTarget.value = "";
+    }
+  }
+
+  async function copyReleaseNotes() {
+    if (!comparison) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(comparison.releaseNotes);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+  }
+
+  function downloadReleaseNotes() {
+    if (!comparison) {
+      return;
+    }
+
+    const blob = new Blob([comparison.releaseNotes], { type: "text/markdown;charset=utf-8" });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = "launchdiff-release-notes.md";
+    link.click();
+    URL.revokeObjectURL(objectUrl);
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void runAnalysis("analyze");
+  }
+
+  const banner = comparison
+    ? completenessBanner(comparison.base.completeness, comparison.compare.completeness)
+    : undefined;
+  const currentUrls = resolveUrls();
+
+  return (
+    <>
+      <DesktopRequiredMessage />
+      <main className="compare-workspace" aria-label="LaunchDiff comparison workspace">
+        {phase === "setup" && (
+          <SetupPanel
+            setupMode={setupMode}
+            setSetupMode={setSetupMode}
+            baseUrl={baseUrl}
+            compareUrl={compareUrl}
+            setBaseUrl={setBaseUrl}
+            setCompareUrl={setCompareUrl}
+            config={config}
+            selectedSite={selectedSite}
+            selectedSiteName={selectedSiteName}
+            baseEnvironmentName={baseEnvironmentName}
+            compareEnvironmentName={compareEnvironmentName}
+            setSelectedSiteName={setSelectedSiteName}
+            setBaseEnvironmentName={setBaseEnvironmentName}
+            setCompareEnvironmentName={setCompareEnvironmentName}
+            onConfigFile={handleConfigFile}
+            onSubmit={handleSubmit}
+            onSwap={() => {
+              if (setupMode === "config") {
+                setBaseEnvironmentName(compareEnvironmentName);
+                setCompareEnvironmentName(baseEnvironmentName);
+              } else {
+                setBaseUrl(compareUrl);
+                setCompareUrl(baseUrl);
+              }
+            }}
+            error={error}
+          />
+        )}
+
+        {phase !== "setup" && (
+          <>
+            <WorkspaceHeader
+              baseUrl={currentUrls.ok ? currentUrls.urls.baseUrl : baseUrl}
+              compareUrl={currentUrls.ok ? currentUrls.urls.compareUrl : compareUrl}
+              phase={phase}
+              progress={progress}
+              counts={counts}
+              reviewProgress={progressCount}
+              onEdit={() => setPhase("setup")}
+              onRefresh={() => void runAnalysis("refresh")}
+              onRetry={() => void runAnalysis("retry")}
+              onCancel={cancelAnalysis}
+            />
+            {error && <InlineBanner tone="danger" title="Analysis failed" description={error} />}
+            {banner && (
+              <InlineBanner
+                tone={banner.tone}
+                title={banner.title}
+                description={banner.description}
+              />
+            )}
+            <ResultTabs activeTab={activeTab} setActiveTab={setActiveTab} comparison={comparison} />
+            {comparison && activeTab === "files" && (
+              <FilesChangedView
+                selectedComparison={selectedComparison}
+                viewedResourceKeys={viewedResourceKeys}
+                visibleGroups={visibleGroups}
+                searchInputRef={searchInputRef}
+                query={query}
+                statusFilter={statusFilter}
+                typeFilter={typeFilter}
+                showUnchanged={showUnchanged}
+                expandedHunkIds={expandedHunkIds}
+                collapsedFoldIds={collapsedFoldIds}
+                setQuery={setQuery}
+                setStatusFilter={setStatusFilter}
+                setTypeFilter={setTypeFilter}
+                setShowUnchanged={setShowUnchanged}
+                setSelectedResourceKey={setSelectedResourceKey}
+                setViewedResourceKeys={setViewedResourceKeys}
+                setExpandedHunkIds={setExpandedHunkIds}
+                setCollapsedFoldIds={setCollapsedFoldIds}
+                onPrevious={() => navigateResource("previous")}
+                onNext={() => navigateResource("next")}
+              />
+            )}
+            {comparison && activeTab === "impacted" && <ImpactedView comparison={comparison} />}
+            {comparison && activeTab === "resolved" && (
+              <ResolvedFilesView comparison={comparison} />
+            )}
+            {comparison && activeTab === "notes" && (
+              <ReleaseNotesView
+                releaseNotes={comparison.releaseNotes}
+                copyState={copyState}
+                onCopy={() => void copyReleaseNotes()}
+                onDownload={downloadReleaseNotes}
+              />
+            )}
+          </>
+        )}
+        <button
+          className="compare-help-button"
+          type="button"
+          aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts"
+          onClick={() => setShowKeyboardHelp(true)}
+        >
+          <QuestionIcon size={16} />
+        </button>
+        {showKeyboardHelp && <KeyboardHelpDialog onClose={() => setShowKeyboardHelp(false)} />}
+      </main>
+    </>
+  );
+}
+
+function DesktopRequiredMessage() {
+  return (
+    <main className="compare-desktop-required" aria-label="Desktop viewport required">
+      <section className="compare-desktop-required__panel">
+        <FileCodeIcon size={28} />
+        <h1>Desktop workspace required</h1>
+        <p>
+          LaunchDiff keeps the comparison view at 1024 CSS pixels or wider so split diffs, resource
+          navigation, and review controls remain accurate.
+        </p>
+      </section>
+    </main>
+  );
+}
+
+function SetupPanel(props: {
+  setupMode: SetupMode;
+  setSetupMode: (mode: SetupMode) => void;
+  baseUrl: string;
+  compareUrl: string;
+  setBaseUrl: (value: string) => void;
+  setCompareUrl: (value: string) => void;
+  config?: LaunchDiffConfig;
+  selectedSite?: LaunchDiffConfig["sites"][number];
+  selectedSiteName: string;
+  baseEnvironmentName: string;
+  compareEnvironmentName: string;
+  setSelectedSiteName: (value: string) => void;
+  setBaseEnvironmentName: (value: string) => void;
+  setCompareEnvironmentName: (value: string) => void;
+  onConfigFile: (event: ChangeEvent<HTMLInputElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSwap: () => void;
+  error?: string;
+}) {
+  return (
+    <form className="compare-setup" onSubmit={props.onSubmit}>
+      <div className="compare-setup__header">
+        <div>
+          <p className="compare-eyebrow">LaunchDiff</p>
+          <h1>Compare deployed Adobe Tags libraries</h1>
+          <p>
+            Choose two current Launch library URLs. Analysis happens in a browser Worker after a
+            thin server fetch handshake.
+          </p>
+        </div>
+        <div className="compare-mode-toggle" role="tablist" aria-label="Input mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={props.setupMode === "direct"}
+            className={props.setupMode === "direct" ? "is-selected" : undefined}
+            onClick={() => props.setSetupMode("direct")}
+          >
+            Direct URLs
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={props.setupMode === "config"}
+            className={props.setupMode === "config" ? "is-selected" : undefined}
+            onClick={() => props.setSetupMode("config")}
+          >
+            Saved Config
+          </button>
+        </div>
+      </div>
+
+      {props.error && (
+        <InlineBanner tone="danger" title="Setup needs attention" description={props.error} />
+      )}
+
+      {props.setupMode === "direct" ? (
+        <div className="compare-url-grid">
+          <label className="compare-field">
+            <span>Base library URL</span>
+            <input
+              type="url"
+              inputMode="url"
+              required
+              placeholder="https://assets.example.com/.../launch-abc.min.js"
+              value={props.baseUrl}
+              onChange={(event) => props.setBaseUrl(event.currentTarget.value)}
+            />
+          </label>
+          <button
+            className="compare-icon-button compare-swap-button"
+            type="button"
+            aria-label="Swap base and compare"
+            title="Swap base and compare"
+            onClick={props.onSwap}
+          >
+            <ArrowSwitchIcon size={16} />
+          </button>
+          <label className="compare-field">
+            <span>Compare library URL</span>
+            <input
+              type="url"
+              inputMode="url"
+              required
+              placeholder="https://assets.example.com/.../launch-def.min.js"
+              value={props.compareUrl}
+              onChange={(event) => props.setCompareUrl(event.currentTarget.value)}
+            />
+          </label>
+        </div>
+      ) : (
+        <div className="compare-config-grid">
+          <label className="compare-upload">
+            <UploadIcon size={16} />
+            <span>Load config JSON</span>
+            <input type="file" accept="application/json,.json" onChange={props.onConfigFile} />
+          </label>
+          <label className="compare-field">
+            <span>Site</span>
+            <select
+              value={props.selectedSiteName}
+              onChange={(event) => {
+                const siteName = event.currentTarget.value;
+                const site = props.config?.sites.find((candidate) => candidate.name === siteName);
+                props.setSelectedSiteName(siteName);
+
+                if (site) {
+                  props.setBaseEnvironmentName(site.environments[0]?.name ?? "");
+                  props.setCompareEnvironmentName(
+                    site.environments[1]?.name ?? site.environments[0]?.name ?? ""
+                  );
+                }
+              }}
+            >
+              <option value="">Choose site</option>
+              {props.config?.sites.map((site) => (
+                <option key={site.name} value={site.name}>
+                  {site.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="compare-field">
+            <span>Base environment</span>
+            <select
+              value={props.baseEnvironmentName}
+              onChange={(event) => props.setBaseEnvironmentName(event.currentTarget.value)}
+            >
+              <option value="">Choose base</option>
+              {props.selectedSite?.environments.map((environment) => (
+                <option key={environment.name} value={environment.name}>
+                  {environment.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="compare-icon-button compare-swap-button"
+            type="button"
+            aria-label="Swap environments"
+            title="Swap environments"
+            onClick={props.onSwap}
+          >
+            <ArrowSwitchIcon size={16} />
+          </button>
+          <label className="compare-field">
+            <span>Compare environment</span>
+            <select
+              value={props.compareEnvironmentName}
+              onChange={(event) => props.setCompareEnvironmentName(event.currentTarget.value)}
+            >
+              <option value="">Choose compare</option>
+              {props.selectedSite?.environments.map((environment) => (
+                <option key={environment.name} value={environment.name}>
+                  {environment.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+
+      <div className="compare-setup__footer">
+        <p>
+          The comparator is intentionally conservative: plausible mismatches stay visible instead of
+          being forced into tidy matches.
+        </p>
+        <button className="compare-primary-button" type="submit">
+          <FileCodeIcon size={16} />
+          Compare Libraries
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function WorkspaceHeader(props: {
+  baseUrl: string;
+  compareUrl: string;
+  phase: WorkspacePhase;
+  progress?: BrowserAnalysisProgress;
+  counts?: ReturnType<typeof comparisonCounts>;
+  reviewProgress: { reviewed: number; total: number };
+  onEdit: () => void;
+  onRefresh: () => void;
+  onRetry: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <header className="compare-header">
+      <div className="compare-header__main">
+        <div
+          className="compare-header__direction"
+          title={`${props.baseUrl} -> ${props.compareUrl}`}
+        >
+          <span>{shortenUrl(props.baseUrl)}</span>
+          <ArrowRightIcon size={14} />
+          <span>{shortenUrl(props.compareUrl)}</span>
+        </div>
+        <div className="compare-header__summary" aria-live="polite">
+          {props.phase === "running" && props.progress ? (
+            <span>{formatProgress(props.progress)}</span>
+          ) : props.counts ? (
+            <>
+              <strong>{props.counts.changed}</strong>
+              <span>changed</span>
+              <strong>{props.counts.impacted}</strong>
+              <span>impacted</span>
+              <strong>
+                {props.reviewProgress.reviewed}/{props.reviewProgress.total}
+              </strong>
+              <span>viewed</span>
+            </>
+          ) : null}
+        </div>
+      </div>
+      <div className="compare-header__actions">
+        <button className="compare-button" type="button" onClick={props.onEdit}>
+          Edit
+        </button>
+        {props.phase === "running" ? (
+          <button
+            className="compare-button compare-button--danger"
+            type="button"
+            onClick={props.onCancel}
+          >
+            <StopIcon size={14} />
+            Cancel
+          </button>
+        ) : (
+          <>
+            <button className="compare-button" type="button" onClick={props.onRetry}>
+              <SyncIcon size={14} />
+              Retry Failed
+            </button>
+            <button className="compare-button" type="button" onClick={props.onRefresh}>
+              <SyncIcon size={14} />
+              Refresh
+            </button>
+          </>
+        )}
+      </div>
+    </header>
+  );
+}
+
+function InlineBanner(props: {
+  tone: "success" | "warning" | "danger";
+  title: string;
+  description: string;
+}) {
+  const Icon =
+    props.tone === "success" ? CheckCircleIcon : props.tone === "danger" ? XCircleIcon : AlertIcon;
+
+  return (
+    <section className={`compare-banner compare-banner--${props.tone}`} role="status">
+      <Icon size={16} />
+      <div>
+        <strong>{props.title}</strong>
+        <p>{props.description}</p>
+      </div>
+    </section>
+  );
+}
+
+function ResultTabs(props: {
+  activeTab: ResultTab;
+  setActiveTab: (tab: ResultTab) => void;
+  comparison?: ComparisonResult;
+}) {
+  const counts = props.comparison ? comparisonCounts(props.comparison) : undefined;
+
+  return (
+    <nav className="compare-tabs" aria-label="Comparison result tabs">
+      {RESULT_TABS.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          className={props.activeTab === tab.id ? "is-active" : undefined}
+          aria-current={props.activeTab === tab.id ? "page" : undefined}
+          onClick={() => props.setActiveTab(tab.id)}
+        >
+          {tab.label}
+          {tab.id === "files" && counts ? <span>{counts.changed}</span> : null}
+          {tab.id === "impacted" && counts ? <span>{counts.impacted}</span> : null}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function FilesChangedView({
+  selectedComparison,
+  viewedResourceKeys,
+  visibleGroups,
+  searchInputRef,
+  query,
+  statusFilter,
+  typeFilter,
+  showUnchanged,
+  expandedHunkIds,
+  collapsedFoldIds,
+  setQuery,
+  setStatusFilter,
+  setTypeFilter,
+  setShowUnchanged,
+  setSelectedResourceKey,
+  setViewedResourceKeys,
+  setExpandedHunkIds,
+  setCollapsedFoldIds,
+  onPrevious,
+  onNext
+}: {
+  selectedComparison?: ResourceComparison;
+  viewedResourceKeys: Set<string>;
+  visibleGroups: ReturnType<typeof groupResourceComparisons>;
+  searchInputRef: RefObject<HTMLInputElement | null>;
+  query: string;
+  statusFilter: StatusFilter;
+  typeFilter: TypeFilter;
+  showUnchanged: boolean;
+  expandedHunkIds: Set<string>;
+  collapsedFoldIds: Set<string>;
+  setQuery: (value: string) => void;
+  setStatusFilter: (value: StatusFilter) => void;
+  setTypeFilter: (value: TypeFilter) => void;
+  setShowUnchanged: (value: boolean) => void;
+  setSelectedResourceKey: (value: string) => void;
+  setViewedResourceKeys: Dispatch<SetStateAction<Set<string>>>;
+  setExpandedHunkIds: Dispatch<SetStateAction<Set<string>>>;
+  setCollapsedFoldIds: Dispatch<SetStateAction<Set<string>>>;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <section className="compare-files-view">
+      <aside className="compare-resource-pane" aria-label="Changed resources">
+        <div className="compare-filter-bar">
+          <label className="compare-search">
+            <SearchIcon size={14} />
+            <input
+              ref={searchInputRef}
+              type="search"
+              value={query}
+              placeholder="Search resources"
+              onChange={(event) => setQuery(event.currentTarget.value)}
+            />
+          </label>
+          <label className="compare-filter-select">
+            <FilterIcon size={14} />
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.currentTarget.value as StatusFilter)}
+            >
+              {STATUS_FILTERS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="compare-filter-select">
+            <FileCodeIcon size={14} />
+            <select
+              value={typeFilter}
+              onChange={(event) => setTypeFilter(event.currentTarget.value as TypeFilter)}
+            >
+              {TYPE_FILTERS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="compare-checkbox">
+            <input
+              type="checkbox"
+              checked={showUnchanged}
+              onChange={(event) => setShowUnchanged(event.currentTarget.checked)}
+            />
+            Show unchanged
+          </label>
+        </div>
+        <ResourceTree
+          groups={visibleGroups}
+          selectedKey={selectedComparison ? comparisonResourceKey(selectedComparison) : undefined}
+          viewedResourceKeys={viewedResourceKeys}
+          setSelectedResourceKey={setSelectedResourceKey}
+        />
+      </aside>
+      <DiffPanel
+        comparison={selectedComparison}
+        viewedResourceKeys={viewedResourceKeys}
+        expandedHunkIds={expandedHunkIds}
+        collapsedFoldIds={collapsedFoldIds}
+        setViewedResourceKeys={setViewedResourceKeys}
+        setExpandedHunkIds={setExpandedHunkIds}
+        setCollapsedFoldIds={setCollapsedFoldIds}
+        onPrevious={onPrevious}
+        onNext={onNext}
+      />
+    </section>
+  );
+}
+
+function ResourceTree(props: {
+  groups: ReturnType<typeof groupResourceComparisons>;
+  selectedKey?: string;
+  viewedResourceKeys: Set<string>;
+  setSelectedResourceKey: (key: string) => void;
+}) {
+  if (props.groups.length === 0) {
+    return <p className="compare-empty-state">No resources match the current filters.</p>;
+  }
+
+  return (
+    <div className="compare-resource-tree">
+      {props.groups.map((group) => (
+        <section key={group.type} className="compare-resource-group">
+          <h2>
+            {group.label}
+            <span>{group.resources.length}</span>
+          </h2>
+          <ul>
+            {group.resources.map((comparison) => {
+              const key = comparisonResourceKey(comparison);
+              const viewed = props.viewedResourceKeys.has(key);
+
+              return (
+                <li key={key}>
+                  <button
+                    type="button"
+                    className={props.selectedKey === key ? "is-selected" : undefined}
+                    onClick={() => props.setSelectedResourceKey(key)}
+                  >
+                    <StatusDot
+                      status={comparison.status}
+                      impacted={comparison.impact?.impacted ?? false}
+                    />
+                    <span className="compare-resource-tree__name">
+                      {comparisonDisplayName(comparison)}
+                    </span>
+                    {viewed ? (
+                      <EyeIcon aria-label="Viewed" size={14} />
+                    ) : (
+                      <EyeClosedIcon aria-label="Not viewed" size={14} />
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function DiffPanel(props: {
+  comparison?: ResourceComparison;
+  viewedResourceKeys: Set<string>;
+  expandedHunkIds: Set<string>;
+  collapsedFoldIds: Set<string>;
+  setViewedResourceKeys: Dispatch<SetStateAction<Set<string>>>;
+  setExpandedHunkIds: Dispatch<SetStateAction<Set<string>>>;
+  setCollapsedFoldIds: Dispatch<SetStateAction<Set<string>>>;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  if (!props.comparison) {
+    return (
+      <section className="compare-diff-pane">
+        <p className="compare-empty-state">Choose a resource to review.</p>
+      </section>
+    );
+  }
+
+  const key = comparisonResourceKey(props.comparison);
+  const viewed = props.viewedResourceKeys.has(key);
+  const diff = props.comparison.detailedDiff;
+
+  function toggleViewed() {
+    props.setViewedResourceKeys((current) => {
+      const next = new Set(current);
+
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+
+      return next;
+    });
+  }
+
+  return (
+    <section className="compare-diff-pane" aria-label="Resource diff">
+      <header className="compare-diff-header">
+        <div>
+          <p>{resourceTypeLabel(resourceTypeForComparison(props.comparison) as ResourceType)}</p>
+          <h2>{comparisonDisplayName(props.comparison)}</h2>
+          <div className="compare-diff-header__meta">
+            <StatusPill
+              status={props.comparison.status}
+              impacted={props.comparison.impact?.impacted ?? false}
+            />
+            {props.comparison.match && (
+              <span>
+                {props.comparison.match.method} / {props.comparison.match.confidence}
+              </span>
+            )}
+            {diff && <span>{diff.language}</span>}
+          </div>
+        </div>
+        <div className="compare-diff-header__actions">
+          <button
+            className="compare-icon-button"
+            type="button"
+            aria-label="Previous resource"
+            title="Previous resource"
+            onClick={props.onPrevious}
+          >
+            <ArrowLeftIcon size={16} />
+          </button>
+          <button
+            className="compare-icon-button"
+            type="button"
+            aria-label="Next resource"
+            title="Next resource"
+            onClick={props.onNext}
+          >
+            <ArrowRightIcon size={16} />
+          </button>
+          <button className="compare-button" type="button" onClick={toggleViewed}>
+            {viewed ? <EyeIcon size={14} /> : <EyeClosedIcon size={14} />}
+            {viewed ? "Viewed" : "Mark viewed"}
+          </button>
+        </div>
+      </header>
+
+      {props.comparison.structuredChanges.length > 0 && (
+        <details className="compare-structured-changes">
+          <summary>Structured changes ({props.comparison.structuredChanges.length})</summary>
+          <ul>
+            {props.comparison.structuredChanges.map((change) => (
+              <li key={change.id}>
+                <strong>{change.kind}</strong>
+                <span>{change.path.join(".") || "resource"}</span>
+                <p>{change.description}</p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {diff ? (
+        <>
+          {diff.functionFolds.length > 0 && (
+            <FunctionFoldList
+              folds={diff.functionFolds}
+              collapsedFoldIds={props.collapsedFoldIds}
+              setCollapsedFoldIds={props.setCollapsedFoldIds}
+            />
+          )}
+          {diff.binaryChanged ? (
+            <p className="compare-empty-state">Binary content changed.</p>
+          ) : diff.hunks.length > 0 ? (
+            <div className="compare-diff-table-wrap">
+              <table className="compare-diff-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Base</th>
+                    <th scope="col">Source</th>
+                    <th scope="col">Compare</th>
+                    <th scope="col">Source</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {diff.hunks.map((hunk) => (
+                    <DiffHunkRows
+                      key={hunk.id}
+                      hunk={hunk}
+                      expanded={props.expandedHunkIds.has(hunk.id)}
+                      collapsedFoldIds={props.collapsedFoldIds}
+                      folds={diff.functionFolds}
+                      onToggleExpanded={() =>
+                        props.setExpandedHunkIds((current) => toggleSetValue(current, hunk.id))
+                      }
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="compare-empty-state">No line-level differences were generated.</p>
+          )}
+        </>
+      ) : (
+        <p className="compare-empty-state">
+          Detailed diff state: {props.comparison.detailedDiffState}.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function DiffHunkRows(props: {
+  hunk: NonNullable<ResourceComparison["detailedDiff"]>["hunks"][number];
+  expanded: boolean;
+  collapsedFoldIds: Set<string>;
+  folds: FunctionFold[];
+  onToggleExpanded: () => void;
+}) {
+  const rows = props.hunk.collapsed
+    ? props.expanded
+      ? (props.hunk.hiddenRows ?? [])
+      : []
+    : props.hunk.rows;
+  const visibleRows = rows.filter(
+    (row) => !isRowHiddenByFold(row, props.collapsedFoldIds, props.folds)
+  );
+
+  return (
+    <>
+      {props.hunk.collapsed && (
+        <tr className="compare-diff-expander">
+          <td colSpan={4}>
+            <button type="button" onClick={props.onToggleExpanded}>
+              {props.expanded ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
+              {props.hunk.oldLines || props.hunk.newLines} unchanged lines
+            </button>
+          </td>
+        </tr>
+      )}
+      {visibleRows.map((row) => (
+        <DiffRow key={row.id} row={row} />
+      ))}
+    </>
+  );
+}
+
+function DiffRow({ row }: { row: SplitDiffRow }) {
+  return (
+    <tr className={row.changed ? "is-changed" : undefined}>
+      <DiffSideCells line={row.base} side="base" changed={row.changed} />
+      <DiffSideCells line={row.compare} side="compare" changed={row.changed} />
+    </tr>
+  );
+}
+
+function DiffSideCells(props: { line?: DiffLine; side: "base" | "compare"; changed: boolean }) {
+  const lineNumber = props.side === "base" ? props.line?.oldLineNumber : props.line?.newLineNumber;
+  const statusClass = props.line ? `is-${props.line.type}` : "is-empty";
+
+  return (
+    <>
+      <td className={`compare-line-number ${statusClass}`}>{lineNumber ?? ""}</td>
+      <td className={`compare-code-cell ${statusClass}`}>
+        {props.line ? (
+          <code>
+            <CodeFragments line={props.line} />
+          </code>
+        ) : null}
+      </td>
+    </>
+  );
+}
+
+function CodeFragments({ line }: { line: DiffLine }) {
+  if (line.tokens?.length) {
+    return (
+      <>
+        {line.tokens.map((token, index) => (
+          <span
+            key={`${index}:${token.value}`}
+            className={token.changed ? "compare-token is-changed" : undefined}
+          >
+            {token.value}
+          </span>
+        ))}
+      </>
+    );
+  }
+
+  return (
+    <>
+      {(line.syntaxTokens ?? [{ value: line.content, kind: "text" } satisfies SyntaxToken]).map(
+        (token, index) => (
+          <span key={`${index}:${token.value}`} className={`syntax-${token.kind}`}>
+            {token.value}
+          </span>
+        )
+      )}
+    </>
+  );
+}
+
+function FunctionFoldList(props: {
+  folds: FunctionFold[];
+  collapsedFoldIds: Set<string>;
+  setCollapsedFoldIds: Dispatch<SetStateAction<Set<string>>>;
+}) {
+  const folds = flattenFunctionFolds(props.folds);
+
+  return (
+    <div className="compare-fold-list" aria-label="Function folds">
+      {folds.map((fold) => {
+        const collapsed = props.collapsedFoldIds.has(fold.id);
+
+        return (
+          <button
+            key={fold.id}
+            type="button"
+            className={fold.containsChanges ? "has-changes" : undefined}
+            onClick={() => props.setCollapsedFoldIds((current) => toggleSetValue(current, fold.id))}
+          >
+            {collapsed ? <ChevronRightIcon size={14} /> : <ChevronDownIcon size={14} />}
+            <span>{fold.name ?? fold.kind}</span>
+            {fold.containsChanges && <strong>changed</strong>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ImpactedView({ comparison }: { comparison: ComparisonResult }) {
+  const impacted = comparison.resources.filter((resource) => resource.impact?.impacted);
+
+  return (
+    <section className="compare-panel-view" aria-label="Impacted resources">
+      <header>
+        <h2>Impacted Resources</h2>
+        <p>{impacted.length} resources have direct or transitive dependency impact.</p>
+      </header>
+      {impacted.length === 0 ? (
+        <p className="compare-empty-state">No dependency impact was detected.</p>
+      ) : (
+        <div className="compare-impact-list">
+          {impacted.map((resource) => (
+            <article key={comparisonResourceKey(resource)} className="compare-impact-row">
+              <div>
+                <StatusPill status={resource.status} impacted />
+                <h3>{comparisonDisplayName(resource)}</h3>
+              </div>
+              <ul>
+                {resource.impact?.paths.map((path, index) => (
+                  <li key={`${path.changedResourceId}:${index}`}>
+                    <strong>{path.direct ? "Direct" : "Transitive"}</strong>
+                    <span>{path.resourceNames.join(" -> ") || path.resourceIds.join(" -> ")}</span>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ResolvedFilesView({ comparison }: { comparison: ComparisonResult }) {
+  return (
+    <section className="compare-panel-view" aria-label="Resolved files">
+      <header>
+        <h2>Resolved Files</h2>
+        <p>
+          Base: {fileStateSummary(comparison.base.files)} / Compare:{" "}
+          {fileStateSummary(comparison.compare.files)}
+        </p>
+      </header>
+      <div className="compare-files-grid">
+        <ResolvedFileTable title="Base" files={comparison.base.files} />
+        <ResolvedFileTable title="Compare" files={comparison.compare.files} />
+      </div>
+    </section>
+  );
+}
+
+function ResolvedFileTable(props: { title: string; files: ResolvedFile[] }) {
+  return (
+    <section className="compare-resolved-table-wrap">
+      <h3>{props.title}</h3>
+      <table className="compare-resolved-table">
+        <thead>
+          <tr>
+            <th scope="col">State</th>
+            <th scope="col">File</th>
+            <th scope="col">Type</th>
+            <th scope="col">Bytes</th>
+            <th scope="col">Attempts</th>
+          </tr>
+        </thead>
+        <tbody>
+          {props.files.map((file) => (
+            <tr key={file.id}>
+              <td>
+                <span className={`compare-file-state compare-file-state--${file.state}`}>
+                  {file.state}
+                </span>
+              </td>
+              <td title={file.authoritativeUrl}>{fileDisplayName(file)}</td>
+              <td>{file.fetch.contentType ?? "unknown"}</td>
+              <td>{file.fetch.byteLength ?? "-"}</td>
+              <td>{file.fetch.attempts}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+function ReleaseNotesView(props: {
+  releaseNotes: string;
+  copyState: "idle" | "copied" | "failed";
+  onCopy: () => void;
+  onDownload: () => void;
+}) {
+  const [mode, setMode] = useState<"preview" | "raw">("preview");
+
+  return (
+    <section className="compare-panel-view" aria-label="Release notes">
+      <header className="compare-release-header">
+        <div>
+          <h2>Release Notes</h2>
+          <p>Deterministic notes generated from deployed-artifact differences only.</p>
+        </div>
+        <div className="compare-release-actions">
+          <div className="compare-mode-toggle" role="tablist" aria-label="Release notes mode">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "preview"}
+              className={mode === "preview" ? "is-selected" : undefined}
+              onClick={() => setMode("preview")}
+            >
+              Preview
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "raw"}
+              className={mode === "raw" ? "is-selected" : undefined}
+              onClick={() => setMode("raw")}
+            >
+              Raw
+            </button>
+          </div>
+          <button className="compare-button" type="button" onClick={props.onCopy}>
+            <CopyIcon size={14} />
+            {props.copyState === "copied"
+              ? "Copied"
+              : props.copyState === "failed"
+                ? "Copy failed"
+                : "Copy"}
+          </button>
+          <button className="compare-button" type="button" onClick={props.onDownload}>
+            <DownloadIcon size={14} />
+            Download
+          </button>
+        </div>
+      </header>
+      {mode === "preview" ? (
+        <MarkdownPreview markdown={props.releaseNotes} />
+      ) : (
+        <pre className="compare-release-raw">{props.releaseNotes}</pre>
+      )}
+    </section>
+  );
+}
+
+function MarkdownPreview({ markdown }: { markdown: string }) {
+  const blocks = markdown.split(/\n{2,}/);
+
+  return (
+    <div className="compare-release-preview">
+      {blocks.map((block, index) => {
+        if (block.startsWith("## ")) {
+          return <h3 key={index}>{block.slice(3)}</h3>;
+        }
+
+        if (block.startsWith("# ")) {
+          return <h2 key={index}>{block.slice(2)}</h2>;
+        }
+
+        if (block.startsWith("- ")) {
+          return (
+            <ul key={index}>
+              {block.split("\n").map((line) => (
+                <li key={line}>{line.replace(/^- /, "")}</li>
+              ))}
+            </ul>
+          );
+        }
+
+        return <p key={index}>{block}</p>;
+      })}
+    </div>
+  );
+}
+
+function KeyboardHelpDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="compare-dialog-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="compare-keyboard-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="keyboard-help-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header>
+          <h2 id="keyboard-help-title">Keyboard Shortcuts</h2>
+          <button
+            className="compare-icon-button"
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            <XIcon size={16} />
+          </button>
+        </header>
+        <dl>
+          <div>
+            <dt>j / n</dt>
+            <dd>Next resource</dd>
+          </div>
+          <div>
+            <dt>k / p</dt>
+            <dd>Previous resource</dd>
+          </div>
+          <div>
+            <dt>v</dt>
+            <dd>Toggle viewed</dd>
+          </div>
+          <div>
+            <dt>f</dt>
+            <dd>Focus search</dd>
+          </div>
+          <div>
+            <dt>[ / ]</dt>
+            <dd>Switch tabs</dd>
+          </div>
+          <div>
+            <dt>Esc</dt>
+            <dd>Close or clear search</dd>
+          </div>
+        </dl>
+      </section>
+    </div>
+  );
+}
+
+function StatusDot(props: { status: ResourceComparison["status"]; impacted: boolean }) {
+  return (
+    <span
+      className={`compare-status-dot compare-status-dot--${props.status}`}
+      data-impacted={props.impacted}
+    />
+  );
+}
+
+function StatusPill(props: { status: ResourceComparison["status"]; impacted: boolean }) {
+  return (
+    <span className={`compare-status-pill compare-status-pill--${props.status}`}>
+      {statusLabel(props.status)}
+      {props.impacted && <strong>Impacted</strong>}
+    </span>
+  );
+}
+
+function validateAnalysisUrls(
+  baseUrl: string,
+  compareUrl: string
+): { ok: true; urls: AnalysisUrls } | { ok: false; message: string } {
+  const base = normalizeAnalysisUrl(baseUrl);
+  const compare = normalizeAnalysisUrl(compareUrl);
+
+  if (!base.ok) {
+    return { ok: false, message: `Base URL: ${base.message}` };
+  }
+
+  if (!compare.ok) {
+    return { ok: false, message: `Compare URL: ${compare.message}` };
+  }
+
+  if (base.url === compare.url) {
+    return { ok: false, message: "Base and compare URLs must be different." };
+  }
+
+  return {
+    ok: true,
+    urls: {
+      baseUrl: base.url,
+      compareUrl: compare.url
+    }
+  };
+}
+
+function normalizeAnalysisUrl(
+  value: string
+): { ok: true; url: string } | { ok: false; message: string } {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return { ok: false, message: "URL is required." };
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return { ok: false, message: "URL must use http:// or https://." };
+    }
+
+    return { ok: true, url: parsed.href };
+  } catch {
+    return { ok: false, message: "Enter a valid URL." };
+  }
+}
+
+function applyDefaultConfigSelection(
+  config: LaunchDiffConfig,
+  setters: {
+    setSelectedSiteName: (value: string) => void;
+    setBaseEnvironmentName: (value: string) => void;
+    setCompareEnvironmentName: (value: string) => void;
+  }
+) {
+  const site = config.sites[0];
+
+  setters.setSelectedSiteName(site?.name ?? "");
+  setters.setBaseEnvironmentName(site?.environments[0]?.name ?? "");
+  setters.setCompareEnvironmentName(
+    site?.environments[1]?.name ?? site?.environments[0]?.name ?? ""
+  );
+}
+
+function pickInitialResource(comparison: ComparisonResult): ResourceComparison | undefined {
+  return (
+    comparison.resources.find((resource) => resource.status === "modified") ??
+    comparison.resources.find(
+      (resource) => resource.status === "added" || resource.status === "removed"
+    ) ??
+    comparison.resources.find((resource) => resource.status === "unknown") ??
+    comparison.resources[0]
+  );
+}
+
+function isReviewableStatus(status: ResourceComparison["status"]): boolean {
+  return status === "added" || status === "removed" || status === "modified";
+}
+
+function resourceTypeForComparison(comparison: ResourceComparison): string {
+  return (comparison.compare ?? comparison.base)?.identity.resourceType ?? "unmapped";
+}
+
+function formatProgress(progress: BrowserAnalysisProgress): string {
+  const label = PHASE_LABELS[progress.phase];
+  const count = progress.detailedDiffs ?? progress.base ?? progress.compare;
+
+  if (!count) {
+    return progress.message ?? label;
+  }
+
+  return `${progress.message ?? label} ${count.completed}${count.total === undefined ? "" : `/${count.total}`}`;
+}
+
+function shortenUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    const fileName = url.pathname.split("/").filter(Boolean).at(-1);
+
+    return fileName ? `${url.hostname}/${fileName}` : url.hostname;
+  } catch {
+    return value;
+  }
+}
+
+function toggleSetValue(current: Set<string>, value: string): Set<string> {
+  const next = new Set(current);
+
+  if (next.has(value)) {
+    next.delete(value);
+  } else {
+    next.add(value);
+  }
+
+  return next;
+}
+
+function flattenFunctionFolds(folds: FunctionFold[]): FunctionFold[] {
+  return folds.flatMap((fold) => [fold, ...flattenFunctionFolds(fold.children)]);
+}
+
+function isRowHiddenByFold(
+  row: SplitDiffRow,
+  collapsedFoldIds: Set<string>,
+  folds: FunctionFold[]
+): boolean {
+  if (row.changed || collapsedFoldIds.size === 0) {
+    return false;
+  }
+
+  const baseLine = row.base?.oldLineNumber;
+  const compareLine = row.compare?.newLineNumber;
+
+  return flattenFunctionFolds(folds)
+    .filter((fold) => collapsedFoldIds.has(fold.id))
+    .some((fold) => {
+      const baseHidden =
+        baseLine !== undefined &&
+        fold.baseRange !== undefined &&
+        baseLine >= fold.baseRange.startLine &&
+        baseLine <= fold.baseRange.endLine;
+      const compareHidden =
+        compareLine !== undefined &&
+        fold.compareRange !== undefined &&
+        compareLine >= fold.compareRange.startLine &&
+        compareLine <= fold.compareRange.endLine;
+
+      return baseHidden || compareHidden;
+    });
+}
+
+function fileStateSummary(files: ResolvedFile[]): string {
+  const resolved = files.filter((file) => file.state === "resolved").length;
+  const failed = files.filter((file) => file.state === "failed").length;
+  const limited = files.filter((file) => file.state === "skipped-limit").length;
+  const unsupported = files.filter((file) => file.state === "unsupported").length;
+
+  return `${resolved} resolved, ${failed} failed, ${limited} limit skipped, ${unsupported} unsupported`;
+}

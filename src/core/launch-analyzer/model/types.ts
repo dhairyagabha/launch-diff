@@ -20,10 +20,7 @@ export interface FetchMetadata {
 
 export type ResolvedFileState = "resolved" | "failed" | "skipped-limit" | "unsupported";
 
-export type DisplaySourceOrigin =
-  | "deployed"
-  | "verified-unminified"
-  | "pretty-printed-deployed";
+export type DisplaySourceOrigin = "deployed" | "verified-unminified" | "pretty-printed-deployed";
 
 export interface ResolvedFile {
   id: string;
@@ -150,10 +147,7 @@ export interface AnalysisWarning {
 }
 
 export type AnalysisCompletenessState =
-  | "complete"
-  | "complete-with-warnings"
-  | "incomplete-retry-recommended"
-  | "failed";
+  "complete" | "complete-with-warnings" | "incomplete-retry-recommended" | "failed";
 
 export interface AnalysisCompleteness {
   state: AnalysisCompletenessState;
@@ -232,6 +226,7 @@ export interface DiffHunk {
   newLines: number;
   lines: DiffLine[];
   rows: SplitDiffRow[];
+  hiddenRows?: SplitDiffRow[];
   collapsed: boolean;
 }
 
@@ -279,11 +274,7 @@ export interface SyntaxToken {
 export interface FunctionFold {
   id: string;
   name?: string;
-  kind:
-    | "function"
-    | "arrow-function"
-    | "class-method"
-    | "object-method";
+  kind: "function" | "arrow-function" | "class-method" | "object-method";
   baseRange?: SourceLineRange;
   compareRange?: SourceLineRange;
   containsChanges: boolean;
