@@ -11,6 +11,11 @@ export {
   parseFixtureManifest,
   validateFixtureManifest
 } from "./fixtures/manifest";
+export {
+  detectCurrentLaunchFormat,
+  parseCurrentLaunchLibrary
+} from "./parser/current-launch";
 export type * from "./fetcher/resource-fetcher";
 export type * from "./fixtures/manifest";
 export type * from "./model/types";
+export type * from "./parser/current-launch";

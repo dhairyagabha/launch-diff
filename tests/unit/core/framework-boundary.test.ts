@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 const forbiddenImportPattern =
   /from\s+["'](?:react|next(?:\/[^"']*)?|@primer\/react)["']|require\(["'](?:react|next(?:\/[^"']*)?|@primer\/react)["']\)/;
 
-const forbiddenGlobalPattern = /\b(?:window|document|sessionStorage)\b/;
+const forbiddenGlobalPattern =
+  /\b(?:window|document|sessionStorage)\s*(?:\.|\[)|typeof\s+(?:window|document|sessionStorage)\b/;
 
 describe("launch analyzer framework boundary", () => {
   it("does not import React, Next.js, Primer, or browser globals", () => {

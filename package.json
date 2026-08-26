@@ -13,6 +13,8 @@
     "verify": "npm run typecheck && npm run lint && npm test"
   },
   "dependencies": {
+    "@babel/parser": "^7.29.8",
+    "@babel/types": "^7.29.8",
     "@primer/react": "latest",
     "next": "latest",
     "react": "latest",
@@ -20,6 +22,7 @@
     "zod": "latest"
   },
   "devDependencies": {
+    "@adobe/reactor-turbine-schemas": "^10.9.0",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",

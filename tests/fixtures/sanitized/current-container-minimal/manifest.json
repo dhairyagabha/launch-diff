@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "id": "current-container-minimal",
+  "title": "Minimal current Launch container",
+  "description": "A sanitized fixture based on Adobe's documented _satellite._container shape and Turbine container schema.",
+  "sanitized": true,
+  "libraries": [
+    {
+      "label": "base",
+      "canonicalUrl": "https://assets.example.test/launch/current/launch-current.min.js",
+      "propertyId": "PR12345678901234567890123456789012",
+      "artifacts": [
+        {
+          "id": "base-canonical",
+          "role": "canonical",
+          "url": "https://assets.example.test/launch/current/launch-current.min.js",
+          "path": "artifacts/base/launch-current.min.js",
+          "contentType": "application/javascript"
+        }
+      ],
+      "expected": {
+        "rules": 1,
+        "dataElements": 1,
+        "extensions": 1,
+        "deferredResources": 0,
+        "mappedOwners": 0,
+        "unmapped": 0,
+        "dataElementReferences": 0,
+        "warnings": 0
+      }
+    }
+  ],
+  "notes": [
+    "IDs and names are sanitized.",
+    "The fixture intentionally keeps one rule, one data element, and one extension so Phase 03 count assertions stay focused."
+  ]
+}
