@@ -6,4 +6,11 @@ export {
   validateLaunchDiffConfig
 } from "./model/config";
 export { calculateCompleteness } from "./model/completeness";
+export {
+  fixtureManifestSchema,
+  parseFixtureManifest,
+  validateFixtureManifest
+} from "./fixtures/manifest";
+export type * from "./fetcher/resource-fetcher";
+export type * from "./fixtures/manifest";
 export type * from "./model/types";

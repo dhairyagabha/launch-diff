@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "synthetic-loader-smoke",
+  "title": "Synthetic fixture loader smoke test",
+  "description": "A small sanitized fixture used to prove local artifact loading without network access.",
+  "sanitized": true,
+  "libraries": [
+    {
+      "label": "base",
+      "canonicalUrl": "https://assets.example.test/launch/base/launch-smoke.min.js",
+      "propertyId": "PR-SYNTHETIC-SMOKE",
+      "artifacts": [
+        {
+          "id": "base-canonical",
+          "role": "canonical",
+          "url": "https://assets.example.test/launch/base/launch-smoke.min.js",
+          "path": "artifacts/base/launch-smoke.min.js",
+          "contentType": "application/javascript"
+        },
+        {
+          "id": "base-rule-action",
+          "role": "deferred",
+          "url": "https://assets.example.test/launch/base/rules/rule-action-analytics.js",
+          "aliases": [
+            "https://assets.example.test/launch/base/rules/rule-action-analytics.abc123.js"
+          ],
+          "path": "artifacts/base/rules/rule-action-analytics.js",
+          "contentType": "application/javascript"
+        }
+      ],
+      "expected": {
+        "rules": 1,
+        "dataElements": 1,
+        "extensions": 1,
+        "deferredResources": 1,
+        "mappedOwners": 1,
+        "unmapped": 0,
+        "dataElementReferences": 2,
+        "warnings": 0
+      }
+    }
+  ],
+  "notes": [
+    "This fixture is synthetic and scoped to Phase 02 fixture plumbing.",
+    "Future parser fixtures should use sanitized captures of current Adobe Launch builds."
+  ]
+}
