@@ -15,7 +15,12 @@ export {
   detectCurrentLaunchFormat,
   parseCurrentLaunchLibrary
 } from "./parser/current-launch";
+export {
+  discoverDeferredLaunchResources,
+  resolveDeferredLaunchResources
+} from "./resolver/deferred-resources";
 export type * from "./fetcher/resource-fetcher";
 export type * from "./fixtures/manifest";
 export type * from "./model/types";
 export type * from "./parser/current-launch";
+export type * from "./resolver/deferred-resources";
