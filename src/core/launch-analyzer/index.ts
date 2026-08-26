@@ -25,8 +25,13 @@ export {
   normalizeTextLineEndings,
   suppressParserKnownGeneratedReferences
 } from "./normalizer/content";
+export {
+  matchLaunchChildComponents,
+  matchLaunchResources
+} from "./matcher/resources";
 export type * from "./fetcher/resource-fetcher";
 export type * from "./fixtures/manifest";
+export type * from "./matcher/resources";
 export type * from "./model/types";
 export type * from "./normalizer/content";
 export type * from "./parser/current-launch";
