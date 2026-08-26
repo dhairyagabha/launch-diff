@@ -5,6 +5,7 @@
 coverage/
 dist/
 node_modules/
+next-env.d.ts
 playwright-report/
 test-results/
 test-fixtures-private/
