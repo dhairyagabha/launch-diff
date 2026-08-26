@@ -58,3 +58,7 @@ Likely building blocks:
 - axe integration for automated accessibility checks
 
 Do not select a prebuilt diff-view component that constrains GitHub fidelity. Use a generic diff algorithm, but own the diff rendering DOM and styling.
+
+## Runtime environment
+
+Set `LAUNCHDIFF_TOKEN_SECRET` for `/api/analysis/start` and `/api/fetch`. It is used to sign short-lived fetch-scope tokens for deferred resource requests and should be a high-entropy secret in every deployed environment.
