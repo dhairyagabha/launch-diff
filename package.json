@@ -17,6 +17,7 @@
     "@babel/types": "^7.29.8",
     "@primer/react": "latest",
     "next": "latest",
+    "prettier": "^3.9.6",
     "react": "latest",
     "react-dom": "latest",
     "zod": "latest"
@@ -28,7 +29,6 @@
     "@types/react-dom": "latest",
     "eslint": "latest",
     "eslint-config-next": "latest",
-    "prettier": "latest",
     "typescript": "latest",
     "vitest": "latest"
   }

@@ -19,8 +19,15 @@ export {
   discoverDeferredLaunchResources,
   resolveDeferredLaunchResources
 } from "./resolver/deferred-resources";
+export {
+  normalizeKnownUnorderedObjectKeys,
+  normalizeResourceContent,
+  normalizeTextLineEndings,
+  suppressParserKnownGeneratedReferences
+} from "./normalizer/content";
 export type * from "./fetcher/resource-fetcher";
 export type * from "./fixtures/manifest";
 export type * from "./model/types";
+export type * from "./normalizer/content";
 export type * from "./parser/current-launch";
 export type * from "./resolver/deferred-resources";
