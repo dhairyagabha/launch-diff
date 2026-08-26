@@ -243,6 +243,40 @@ export interface DependencyImpactPath {
 }
 ```
 
+## Detailed diff
+
+```ts
+export interface DetailedDiff {
+  fileId: string;
+  language: "javascript" | "json" | "html" | "css" | "text" | "binary" | "unknown";
+  hunks: DiffHunk[];
+  binaryChanged?: boolean;
+  functionFolds: FunctionFold[];
+}
+
+export interface DiffHunk {
+  id: string;
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: DiffLine[];
+  rows: SplitDiffRow[];
+  collapsed: boolean;
+}
+
+export interface SplitDiffRow {
+  id: string;
+  base?: DiffLine;
+  compare?: DiffLine;
+  changed: boolean;
+}
+```
+
+`lines` supports unified-style consumers; `rows` is the authoritative split-diff alignment
+for the comparison workspace. Intra-line emphasis and syntax highlighting are separate token layers.
+Changed functions must not collapse by default.
+
 ## Analysis completeness
 
 ```ts

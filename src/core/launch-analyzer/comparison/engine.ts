@@ -5,6 +5,7 @@ import {
   calculateDependencyImpacts,
   resourceGraphId
 } from "../dependencies/data-elements";
+import { enqueueDetailedDiffs } from "../diff/detailed-diff";
 import { matchLaunchResources } from "../matcher/resources";
 import type {
   AnalysisWarning,
@@ -102,8 +103,8 @@ export function compareResolvedLibraries(
   );
   const dependencyGraph = buildDataElementDependencyGraph(compareResources);
   const impactAnalysis = calculateDependencyImpacts(dependencyGraph, changedCompareResourceIds);
-  const comparisonsWithImpact = comparisons.map((comparison) =>
-    attachImpact(comparison, impactAnalysis.impactsByResourceId)
+  const comparisonsWithImpact = enqueueDetailedDiffs(
+    comparisons.map((comparison) => attachImpact(comparison, impactAnalysis.impactsByResourceId))
   );
 
   return {

@@ -41,8 +41,19 @@ export {
   compareResolvedLibraries,
   validateComparableProperties
 } from "./comparison/engine";
+export {
+  buildDetailedDiff,
+  comparisonResourceKey,
+  createDetailedDiffQueue,
+  detailedDiffCacheKey,
+  enqueueDetailedDiffs,
+  populateComparisonDetailedDiffs,
+  populateDetailedDiffs,
+  tokenizeSyntaxLine
+} from "./diff/detailed-diff";
 export type * from "./fetcher/resource-fetcher";
 export type * from "./comparison/engine";
+export type * from "./diff/detailed-diff";
 export type * from "./dependencies/data-elements";
 export type * from "./fixtures/manifest";
 export type * from "./matcher/resources";

@@ -221,6 +221,7 @@ export interface DetailedDiff {
   language: "javascript" | "json" | "html" | "css" | "text" | "binary" | "unknown";
   hunks: DiffHunk[];
   binaryChanged?: boolean;
+  functionFolds: FunctionFold[];
 }
 
 export interface DiffHunk {
@@ -230,21 +231,69 @@ export interface DiffHunk {
   newStart: number;
   newLines: number;
   lines: DiffLine[];
+  rows: SplitDiffRow[];
   collapsed: boolean;
 }
+
+export interface SplitDiffRow {
+  id: string;
+  base?: DiffLine;
+  compare?: DiffLine;
+  changed: boolean;
+}
+
+export type DiffSide = "base" | "compare";
 
 export interface DiffLine {
   id: string;
   type: "context" | "added" | "removed";
+  side?: DiffSide;
   oldLineNumber?: number;
   newLineNumber?: number;
   content: string;
   tokens?: DiffToken[];
+  syntaxTokens?: SyntaxToken[];
 }
 
 export interface DiffToken {
   value: string;
   changed: boolean;
+}
+
+export interface SyntaxToken {
+  value: string;
+  kind:
+    | "comment"
+    | "identifier"
+    | "keyword"
+    | "literal"
+    | "number"
+    | "operator"
+    | "punctuation"
+    | "string"
+    | "tag"
+    | "text"
+    | "whitespace";
+}
+
+export interface FunctionFold {
+  id: string;
+  name?: string;
+  kind:
+    | "function"
+    | "arrow-function"
+    | "class-method"
+    | "object-method";
+  baseRange?: SourceLineRange;
+  compareRange?: SourceLineRange;
+  containsChanges: boolean;
+  collapsedByDefault: boolean;
+  children: FunctionFold[];
+}
+
+export interface SourceLineRange {
+  startLine: number;
+  endLine: number;
 }
 
 export interface ComparisonResult {
