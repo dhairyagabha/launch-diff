@@ -17,15 +17,15 @@ import {
 
 describe("deferred Launch resource resolver", () => {
   it("discovers only parser-confirmed Turbine filePaths and retains all owners", () => {
-    const { library, manifest } = parseDeferredFixture();
+    const { library } = parseDeferredFixture();
     const references = discoverDeferredLaunchResources(library);
 
     expect(references.map((reference) => reference.url)).toEqual([
       "https://assets.example.test/extensions/core/rules/shared-helper.js",
       "https://assets.example.test/extensions/core/rules/action-only.js"
     ]);
-    expect(references).toHaveLength(manifest.libraries[0]!.expected.deferredResources);
-    expect(totalOwners(references)).toBe(manifest.libraries[0]!.expected.mappedOwners);
+    expect(references).toHaveLength(2);
+    expect(totalOwners(references)).toBe(6);
     expect(references[0]?.owners.map((owner) => owner.resourceType).sort()).toEqual([
       "data-element",
       "extension",
@@ -45,11 +45,14 @@ describe("deferred Launch resource resolver", () => {
 
     expect(recordingFetcher.requestedUrls).toEqual([
       "https://assets.example.test/extensions/core/rules/shared-helper.js",
-      "https://assets.example.test/extensions/core/rules/action-only.js"
+      "https://assets.example.test/extensions/core/rules/action-only.js",
+      "https://assets.example.test/extensions/core/rules/nested-helper.js"
     ]);
     expect(recordingFetcher.requestedUrls.some((url) => url.includes("pixel.gif"))).toBe(false);
     expect(recordingFetcher.requestedUrls.some((url) => url.endsWith(".map"))).toBe(false);
-    expect(result.library.files.filter((file) => file.state === "resolved")).toHaveLength(3);
+    expect(result.references).toHaveLength(manifest.libraries[0]!.expected.deferredResources);
+    expect(totalOwners(result.references)).toBe(manifest.libraries[0]!.expected.mappedOwners);
+    expect(result.library.files.filter((file) => file.state === "resolved")).toHaveLength(4);
     expect(
       result.library.files.find((file) =>
         file.authoritativeUrl.endsWith("/rules/shared-helper.js")

@@ -1,5 +1,6 @@
 import { ANALYSIS_LIMITS } from "../model/limits";
 import { calculateCompleteness } from "../model/completeness";
+import { detectCurrentLaunchFormat, parseCurrentLaunchLibrary } from "../parser/current-launch";
 import type {
   AnalysisWarning,
   ResolvedFile,
@@ -18,6 +19,7 @@ export interface ResolveDeferredResourcesInput {
   library: ResolvedLibrary;
   fetcher: ResourceFetcher;
   maxResources?: number;
+  maxRecursionDepth?: number;
 }
 
 export interface ResolveDeferredResourcesResult {
@@ -78,17 +80,45 @@ export function discoverDeferredLaunchResources(
 export async function resolveDeferredLaunchResources(
   input: ResolveDeferredResourcesInput
 ): Promise<ResolveDeferredResourcesResult> {
-  const references = discoverDeferredLaunchResources(input.library);
   const maxResources = input.maxResources ?? ANALYSIS_LIMITS.maxResourcesPerLibrary;
-  const fetchableReferences = references.slice(0, maxResources);
-  const skippedReferences = references.slice(maxResources);
+  const maxRecursionDepth = input.maxRecursionDepth ?? ANALYSIS_LIMITS.maxRecursionDepth;
+  const referencesByUrl = new Map<string, DeferredLaunchResourceReference>();
+  const pendingReferences: Array<{ reference: DeferredLaunchResourceReference; depth: number }> = [];
+  const skippedReferences: DeferredLaunchResourceReference[] = [];
   const warnings: AnalysisWarning[] = [];
   const deferredFiles: ResolvedFile[] = [];
 
-  for (const [index, reference] of fetchableReferences.entries()) {
-    const result = await input.fetcher.fetchResource({ url: reference.url });
+  for (const reference of discoverDeferredLaunchResources(input.library)) {
+    enqueueReference({
+      reference,
+      depth: 0,
+      referencesByUrl,
+      pendingReferences,
+      skippedReferences,
+      maxResources
+    });
+  }
 
-    deferredFiles.push(createDeferredResolvedFile(index, reference, result));
+  while (pendingReferences.length > 0) {
+    const next = pendingReferences.shift()!;
+    const reference = referencesByUrl.get(next.reference.url) ?? next.reference;
+    const result = await input.fetcher.fetchResource({ url: reference.url });
+    const resolvedFile = createDeferredResolvedFile(deferredFiles.length, reference, result);
+
+    deferredFiles.push(resolvedFile);
+
+    if (result.ok && result.body.kind === "text" && next.depth < maxRecursionDepth) {
+      for (const nestedReference of discoverNestedDeferredReferences(result.body.text, reference.url)) {
+        enqueueReference({
+          reference: nestedReference,
+          depth: next.depth + 1,
+          referencesByUrl,
+          pendingReferences,
+          skippedReferences,
+          maxResources
+        });
+      }
+    }
   }
 
   for (const [index, reference] of skippedReferences.entries()) {
@@ -97,7 +127,7 @@ export async function resolveDeferredLaunchResources(
       "A parser-confirmed deferred Launch resource was skipped because the resource limit was reached."
     );
     warnings.push(warning);
-    deferredFiles.push(createSkippedLimitFile(index + fetchableReferences.length, reference, warning));
+    deferredFiles.push(createSkippedLimitFile(index + deferredFiles.length, reference, warning));
   }
 
   const files = [...input.library.files, ...deferredFiles];
@@ -106,7 +136,7 @@ export async function resolveDeferredLaunchResources(
   const limitReached = skippedReferences.length > 0;
 
   return {
-    references,
+    references: [...referencesByUrl.values()],
     library: {
       ...input.library,
       files,
@@ -119,6 +149,50 @@ export async function resolveDeferredLaunchResources(
       })
     }
   };
+}
+
+function enqueueReference(input: {
+  reference: DeferredLaunchResourceReference;
+  depth: number;
+  referencesByUrl: Map<string, DeferredLaunchResourceReference>;
+  pendingReferences: Array<{ reference: DeferredLaunchResourceReference; depth: number }>;
+  skippedReferences: DeferredLaunchResourceReference[];
+  maxResources: number;
+}): void {
+  const existing = input.referencesByUrl.get(input.reference.url);
+
+  if (existing) {
+    existing.owners = mergeOwners(existing.owners, input.reference.owners);
+    return;
+  }
+
+  input.referencesByUrl.set(input.reference.url, input.reference);
+
+  if (input.referencesByUrl.size > input.maxResources) {
+    input.skippedReferences.push(input.reference);
+    return;
+  }
+
+  input.pendingReferences.push({
+    reference: input.reference,
+    depth: input.depth
+  });
+}
+
+function discoverNestedDeferredReferences(
+  source: string,
+  canonicalUrl: string
+): DeferredLaunchResourceReference[] {
+  if (!detectCurrentLaunchFormat(source).detected) {
+    return [];
+  }
+
+  const nestedLibrary = parseCurrentLaunchLibrary({
+    source,
+    canonicalUrl
+  });
+
+  return discoverDeferredLaunchResources(nestedLibrary);
 }
 
 function collectExtensionModuleFilePaths(library: ResolvedLibrary): ExtensionModuleFilePath[] {
