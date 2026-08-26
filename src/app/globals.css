@@ -1,0 +1,85 @@
+:root {
+  color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bgColor-default, #ffffff);
+  color: var(--fgColor-default, #1f2328);
+}
+
+a {
+  color: inherit;
+}
+
+.launchdiff-home {
+  min-height: 100vh;
+  padding: 56px 24px;
+}
+
+.launchdiff-home__inner {
+  width: min(960px, 100%);
+  margin: 0 auto;
+}
+
+.launchdiff-home__panel {
+  border: 1px solid var(--borderColor-default, #d0d7de);
+  border-radius: 8px;
+  padding: 24px;
+  background: var(--bgColor-muted, #f6f8fa);
+}
+
+.launchdiff-home__eyebrow {
+  margin: 0 0 12px;
+  color: var(--fgColor-muted, #656d76);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.launchdiff-home__title {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  line-height: 1.05;
+}
+
+.launchdiff-home__lede {
+  max-width: 720px;
+  margin: 20px 0 0;
+  color: var(--fgColor-muted, #656d76);
+  font-size: 1.125rem;
+  line-height: 1.6;
+}
+
+.launchdiff-home__list {
+  display: grid;
+  gap: 12px;
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.launchdiff-home__list li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--fgColor-default, #1f2328);
+}
+
+.launchdiff-home__list li::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-top: 9px;
+  border-radius: 50%;
+  background: var(--fgColor-accent, #0969da);
+}

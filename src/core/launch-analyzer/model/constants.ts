@@ -1,0 +1,1 @@
+export const ANALYZER_MODEL_VERSION = 1;

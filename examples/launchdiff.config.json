@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "sites": [
+    {
+      "name": "Example Site",
+      "environments": [
+        {
+          "name": "Development",
+          "url": "https://example.com/launch-development.min.js"
+        },
+        {
+          "name": "QA",
+          "url": "https://example.com/launch-qa.min.js"
+        },
+        {
+          "name": "Production",
+          "url": "https://example.com/launch-production.min.js"
+        }
+      ]
+    }
+  ]
+}
