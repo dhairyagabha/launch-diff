@@ -7,6 +7,7 @@ import {
 } from "../dependencies/data-elements";
 import { enqueueDetailedDiffs } from "../diff/detailed-diff";
 import { matchLaunchResources } from "../matcher/resources";
+import { generateReleaseNotes } from "../release-notes/generator";
 import type {
   AnalysisWarning,
   ComparisonResult,
@@ -107,29 +108,34 @@ export function compareResolvedLibraries(
     comparisons.map((comparison) => attachImpact(comparison, impactAnalysis.impactsByResourceId))
   );
 
+  const comparisonResult: ComparisonResult = {
+    modelVersion: ANALYZER_MODEL_VERSION,
+    base: {
+      ...base,
+      resources: baseResources
+    },
+    compare: {
+      ...compare,
+      resources: compareResources,
+      dependencyGraph
+    },
+    resources: comparisonsWithImpact,
+    impacts: impactAnalysis.impacts,
+    warnings: [
+      ...base.warnings,
+      ...compare.warnings,
+      ...propertyValidation.warnings,
+      ...warningsForCompleteness(base, "base"),
+      ...warningsForCompleteness(compare, "compare")
+    ],
+    releaseNotes: ""
+  };
+
   return {
     ok: true,
     comparison: {
-      modelVersion: ANALYZER_MODEL_VERSION,
-      base: {
-        ...base,
-        resources: baseResources
-      },
-      compare: {
-        ...compare,
-        resources: compareResources,
-        dependencyGraph
-      },
-      resources: comparisonsWithImpact,
-      impacts: impactAnalysis.impacts,
-      warnings: [
-        ...base.warnings,
-        ...compare.warnings,
-        ...propertyValidation.warnings,
-        ...warningsForCompleteness(base, "base"),
-        ...warningsForCompleteness(compare, "compare")
-      ],
-      releaseNotes: ""
+      ...comparisonResult,
+      releaseNotes: generateReleaseNotes(comparisonResult)
     }
   };
 }

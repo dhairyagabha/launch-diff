@@ -51,6 +51,7 @@ export {
   populateDetailedDiffs,
   tokenizeSyntaxLine
 } from "./diff/detailed-diff";
+export { generateReleaseNotes } from "./release-notes/generator";
 export type * from "./fetcher/resource-fetcher";
 export type * from "./comparison/engine";
 export type * from "./diff/detailed-diff";
@@ -60,4 +61,5 @@ export type * from "./matcher/resources";
 export type * from "./model/types";
 export type * from "./normalizer/content";
 export type * from "./parser/current-launch";
+export type * from "./release-notes/generator";
 export type * from "./resolver/deferred-resources";
