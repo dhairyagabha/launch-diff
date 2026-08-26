@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -9,25 +9,18 @@ const forbiddenGlobalPattern = /\b(?:window|document|sessionStorage)\b/;
 
 describe("launch analyzer framework boundary", () => {
   it("does not import React, Next.js, Primer, or browser globals", () => {
-    const files = [
-      "src/core/launch-analyzer/index.ts",
-      "src/core/launch-analyzer/model/constants.ts",
-      "src/core/launch-analyzer/model/limits.ts",
-      "src/core/launch-analyzer/model/types.ts",
-      "src/core/launch-analyzer/model/config.ts",
-      "src/core/launch-analyzer/model/completeness.ts"
-    ];
+    const files = collectTypeScriptFiles(resolve(process.cwd(), "src/core/launch-analyzer"));
 
     const violations = files.flatMap((file) => {
-      const contents = readFileSync(resolve(process.cwd(), file), "utf8");
+      const contents = readFileSync(file, "utf8");
       const problems = [];
 
       if (forbiddenImportPattern.test(contents)) {
-        problems.push(`${file}: imports framework UI code`);
+        problems.push(`${relativeToProject(file)}: imports framework UI code`);
       }
 
       if (forbiddenGlobalPattern.test(contents)) {
-        problems.push(`${file}: references browser globals`);
+        problems.push(`${relativeToProject(file)}: references browser globals`);
       }
 
       return problems;
@@ -36,3 +29,19 @@ describe("launch analyzer framework boundary", () => {
     expect(violations).toEqual([]);
   });
 });
+
+function collectTypeScriptFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = resolve(directory, entry.name);
+
+    if (entry.isDirectory()) {
+      return collectTypeScriptFiles(entryPath);
+    }
+
+    return entry.isFile() && entry.name.endsWith(".ts") ? [entryPath] : [];
+  });
+}
+
+function relativeToProject(file: string): string {
+  return file.replace(`${process.cwd()}/`, "");
+}
