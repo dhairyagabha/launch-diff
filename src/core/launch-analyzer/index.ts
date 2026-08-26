@@ -29,7 +29,16 @@ export {
   matchLaunchChildComponents,
   matchLaunchResources
 } from "./matcher/resources";
+export {
+  annotateDataElementReferences,
+  buildDataElementDependencyGraph,
+  calculateDependencyImpacts,
+  extractDataElementReferencesFromSource,
+  extractPercentTokenReferences,
+  resourceGraphId
+} from "./dependencies/data-elements";
 export type * from "./fetcher/resource-fetcher";
+export type * from "./dependencies/data-elements";
 export type * from "./fixtures/manifest";
 export type * from "./matcher/resources";
 export type * from "./model/types";
