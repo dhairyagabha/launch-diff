@@ -463,33 +463,18 @@ export default function HomePage() {
                     <div className="landing-doc-timeline__marker">
                       <span>{index + 1}</span>
                     </div>
-                    <div className="landing-doc-timeline__body">
-                      <ItemIcon size={18} aria-hidden="true" />
-                      <strong>{item.label}</strong>
-                    </div>
+                    <article className="landing-doc-step">
+                      <div className="landing-doc-step__meta">
+                        <ItemIcon size={18} aria-hidden="true" />
+                        <span>{item.label}</span>
+                      </div>
+                      <strong>{item.title}</strong>
+                      <p>{item.body}</p>
+                    </article>
                   </li>
                 );
               })}
             </ol>
-            <div className="landing-doc-readme" aria-label="Documentation details">
-              <ol className="landing-doc-list">
-                {documentationItems.map((item) => {
-                  const ItemIcon = item.icon;
-
-                  return (
-                    <li key={item.title}>
-                      <div className="landing-doc-list__icon">
-                        <ItemIcon size={18} aria-hidden="true" />
-                      </div>
-                      <div>
-                        <strong>{item.title}</strong>
-                        <span>{item.body}</span>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            </div>
           </div>
         </div>
       </section>
@@ -556,8 +541,8 @@ export default function HomePage() {
             <LaunchDiffMark decorative />
             <div>
               <p className="landing-eyebrow">Ready for review</p>
-              <h2 id="footer-title">Know exactly what changed before you publish.</h2>
-              <p>Bring the deployed artifact, the readable diff, and the impact trail into one review.</p>
+              <h2 id="footer-title">Bring each publish decision back to evidence.</h2>
+              <p>Compare public deployed artifacts, inspect resolved code, and keep uncertainty visible.</p>
             </div>
           </div>
           <div className="landing-footer__actions">
@@ -571,27 +556,33 @@ export default function HomePage() {
               Docs
             </a>
           </div>
-          <nav className="landing-footer__nav" aria-label="Footer navigation">
-            {footerLinks.map((link) => (
-              <a key={link.href} href={link.href}>
-                {link.label}
-              </a>
-            ))}
-            {repositoryUrl ? (
-              <a href={repositoryUrl}>
-                <MarkGithubIcon size={16} aria-hidden="true" />
-                GitHub
-              </a>
-            ) : null}
-          </nav>
-          <ul className="landing-footer__signals" aria-label="Review boundaries">
-            {footerSignals.map((signal) => (
-              <li key={signal}>
-                <CheckCircleIcon size={14} aria-hidden="true" />
-                {signal}
-              </li>
-            ))}
-          </ul>
+          <div className="landing-footer__column">
+            <p className="landing-footer__label">Explore</p>
+            <nav className="landing-footer__nav" aria-label="Footer navigation">
+              {footerLinks.map((link) => (
+                <a key={link.href} href={link.href}>
+                  {link.label}
+                </a>
+              ))}
+              {repositoryUrl ? (
+                <a href={repositoryUrl}>
+                  <MarkGithubIcon size={16} aria-hidden="true" />
+                  GitHub
+                </a>
+              ) : null}
+            </nav>
+          </div>
+          <div className="landing-footer__column">
+            <p className="landing-footer__label">Review boundaries</p>
+            <ul className="landing-footer__signals" aria-label="Review boundaries">
+              {footerSignals.map((signal) => (
+                <li key={signal}>
+                  <CheckCircleIcon size={14} aria-hidden="true" />
+                  {signal}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </footer>
     </main>
