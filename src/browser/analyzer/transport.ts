@@ -43,7 +43,7 @@ interface FetchMetadataLike {
 }
 
 export class ApiAnalysisTransport implements AnalysisTransport {
-  constructor(private readonly fetchImpl: FetchLike = fetch) {}
+  constructor(private readonly fetchImpl: FetchLike = fetchWithGlobalScope) {}
 
   async startAnalysis(input: {
     baseUrl: string;
@@ -138,6 +138,10 @@ export class ApiAnalysisTransport implements AnalysisTransport {
       metadata: fetchMetadataFromApi(result.metadata)
     };
   }
+}
+
+function fetchWithGlobalScope(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return globalThis.fetch(input, init);
 }
 
 function fetchFailure(
