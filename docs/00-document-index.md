@@ -31,3 +31,4 @@ This folder is the implementation specification for LaunchDiff.
 - `12-open-source-repo.md` — MIT/open-source/CI/privacy/security structure
 - `13-codex-master-prompt.md` — suggested initial prompt for Codex
 - `14-decision-log.md` — compact record of the agreed product decisions
+- `15-validation-checklist.md` — Phase 15 automated and manual validation checklist

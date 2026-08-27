@@ -19,6 +19,48 @@ test.describe("comparison workspace acceptance", () => {
     await installMockAnalyzerWorker(page);
   });
 
+  test("validates direct URLs and supports saved config upload", async ({ page }) => {
+    const duplicatedUrl = "https://assets.example.test/base/launch.min.js";
+
+    await page.goto("/compare");
+    await page.getByLabel("Base library URL").fill(duplicatedUrl);
+    await page.getByLabel("Compare library URL").fill(duplicatedUrl);
+    await page.getByRole("button", { name: "Compare Libraries" }).click();
+    await expect(page.getByText("Base and compare URLs must be different.")).toBeVisible();
+
+    await page.getByRole("tab", { name: "Saved Config" }).click();
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "launchdiff.config.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(
+        JSON.stringify({
+          version: 1,
+          sites: [
+            {
+              name: "Example Site",
+              environments: [
+                {
+                  name: "Production",
+                  url: "https://assets.example.test/base/launch.min.js"
+                },
+                {
+                  name: "Staging",
+                  url: "https://assets.example.test/compare/launch.min.js"
+                }
+              ]
+            }
+          ]
+        })
+      )
+    });
+    await expect(page.getByLabel("Site")).toHaveValue("Example Site");
+    await expect(page.getByLabel("Base environment")).toHaveValue("Production");
+    await expect(page.getByLabel("Compare environment")).toHaveValue("Staging");
+
+    await page.getByRole("button", { name: "Compare Libraries" }).click();
+    await expect(page.getByRole("heading", { name: "Checkout Tracking Rule" })).toBeVisible();
+  });
+
   test("captures light and dark baselines and passes automated accessibility checks", async ({
     page
   }) => {
@@ -53,6 +95,83 @@ test.describe("comparison workspace acceptance", () => {
     });
   });
 
+  test("captures added, removed, impacted, resolved, and release note states", async ({
+    context,
+    page
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.goto("/compare");
+    await page.getByLabel("Use light theme").click();
+    await runMockComparison(page);
+
+    await page.getByRole("button", { name: /Signup Rule/ }).click();
+    await expect(page.getByRole("heading", { name: "Signup Rule" })).toBeVisible();
+    await expect(page).toHaveScreenshot("compare-added-resource.png", {
+      animations: "disabled"
+    });
+
+    await page.getByRole("button", { name: /Legacy Cleanup Rule/ }).click();
+    await expect(page.getByRole("heading", { name: "Legacy Cleanup Rule" })).toBeVisible();
+    await expect(page).toHaveScreenshot("compare-removed-resource.png", {
+      animations: "disabled"
+    });
+
+    await page.getByRole("button", { name: "Impacted 1" }).click();
+    await expect(page.getByRole("heading", { name: "Impacted Resources" })).toBeVisible();
+    await expect(page).toHaveScreenshot("compare-impacted.png", {
+      animations: "disabled"
+    });
+    await expectNoAxeViolations(page);
+
+    await page.getByRole("button", { name: "Resolved Files" }).click();
+    await expect(page.getByRole("heading", { name: "Resolved Files" })).toBeVisible();
+    await expect(page.getByText("missing.js")).toBeVisible();
+    await expect(page).toHaveScreenshot("compare-resolved-files.png", {
+      animations: "disabled"
+    });
+
+    await page.getByRole("button", { name: "Release Notes" }).click();
+    await expect(page.getByRole("heading", { name: "Release Notes", exact: true })).toBeVisible();
+    await expect(page).toHaveScreenshot("compare-release-notes-preview.png", {
+      animations: "disabled"
+    });
+    await page.getByRole("tab", { name: "Raw" }).click();
+    await expect(page.getByText("# LaunchDiff Release Notes")).toBeVisible();
+    await page.getByRole("button", { name: "Copy" }).click();
+    await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe("launchdiff-release-notes.md");
+  });
+
+  test("keeps a representative large comparison responsive", async ({ page }) => {
+    await installMockAnalyzerWorker(page, largeFixtureComparison(), { resultDelayMs: 250 });
+    await page.goto("/compare");
+    await page.getByLabel("Use light theme").click();
+
+    await startHeartbeat(page);
+    await runMockComparison(page);
+    await expect(page.getByRole("button", { name: /Large Rule 149/ })).toBeVisible();
+
+    const heartbeat = await stopHeartbeat(page);
+    expect(heartbeat.ticks).toBeGreaterThanOrEqual(8);
+    expect(heartbeat.maxGapMs).toBeLessThan(250);
+
+    await page.getByPlaceholder("Search resources").fill("Large Rule 149");
+    await expect(page.getByRole("button", { name: /Large Rule 149/ })).toBeVisible();
+    await page.getByRole("button", { name: /Large Rule 149/ }).click();
+    await expect(page.getByRole("heading", { name: "Large Rule 149" })).toBeVisible();
+
+    const postRenderFrames = await countAnimationFrames(page, 250);
+    expect(postRenderFrames).toBeGreaterThanOrEqual(8);
+
+    await page.keyboard.press("v");
+    await expect(
+      page.getByRole("button", { name: /Large Rule 149.*Viewed/ })
+    ).toBeVisible();
+  });
+
   test("supports keyboard review workflow end to end", async ({ page }) => {
     await page.goto("/compare");
     await runMockComparison(page);
@@ -85,6 +204,19 @@ test.describe("comparison workspace acceptance", () => {
     await page.locator(".compare-diff-pane").click();
     await page.keyboard.press("]");
     await expect(page.getByRole("heading", { name: "Impacted Resources" })).toBeVisible();
+
+    await page.keyboard.press("[");
+    await page.getByRole("button", { name: /Checkout Tracking Rule/ }).click();
+    await expect(page.getByRole("heading", { name: "Checkout Tracking Rule" })).toBeVisible();
+    const stableReturnLines = page.locator(".compare-code-cell code", { hasText: "return true;" });
+
+    await expect(stableReturnLines).toHaveCount(0);
+    await page.getByRole("button", { name: "4 unchanged lines" }).click();
+    await expect(stableReturnLines).toHaveCount(0);
+    await page.getByRole("button", { name: "stableHelper" }).click();
+    await expect(stableReturnLines).toHaveCount(2);
+    await page.getByRole("button", { name: "stableHelper" }).click();
+    await expect(stableReturnLines).toHaveCount(0);
   });
 
   test("shows the desktop-required gate below the compare breakpoint", async ({ page }) => {
@@ -109,8 +241,12 @@ async function runMockComparison(page: Page): Promise<void> {
   await expect(page.getByText("Analysis completed with warnings")).toBeVisible();
 }
 
-async function installMockAnalyzerWorker(page: Page): Promise<void> {
-  await page.addInitScript((comparison) => {
+async function installMockAnalyzerWorker(
+  page: Page,
+  comparison: ComparisonResult = fixtureComparison(),
+  options: { resultDelayMs?: number } = {}
+): Promise<void> {
+  await page.addInitScript(({ comparison, resultDelayMs }) => {
     class MockAnalyzerWorker {
       private listeners: Array<(event: { data: unknown }) => void> = [];
 
@@ -135,7 +271,10 @@ async function installMockAnalyzerWorker(page: Page): Promise<void> {
         };
 
         window.setTimeout(() => this.emit({ id: message.id, type: "progress", progress }), 5);
-        window.setTimeout(() => this.emit({ id: message.id, type: "result", comparison }), 15);
+        window.setTimeout(
+          () => this.emit({ id: message.id, type: "result", comparison }),
+          resultDelayMs
+        );
       }
 
       terminate() {
@@ -154,7 +293,7 @@ async function installMockAnalyzerWorker(page: Page): Promise<void> {
       writable: true,
       value: MockAnalyzerWorker
     });
-  }, fixtureComparison());
+  }, { comparison, resultDelayMs: options.resultDelayMs ?? 15 });
 }
 
 async function expectTableHeaderBeforeFirstDiffRow(page: Page): Promise<void> {
@@ -302,6 +441,177 @@ function fixtureComparison(): ComparisonResult {
       "## Analysis Warnings",
       "",
       "- One parser-confirmed deferred resource failed to resolve."
+    ].join("\n")
+  };
+}
+
+function largeFixtureComparison(): ComparisonResult {
+  const comparison = fixtureComparison();
+  const baseResources = [...comparison.base.resources];
+  const compareResources = [...comparison.compare.resources];
+  const resourceComparisons: ResourceComparison[] = [...comparison.resources];
+  const warnings = [...comparison.warnings];
+  const impacts = [...comparison.impacts];
+
+  for (let index = 0; index < 180; index += 1) {
+    const suffix = index.toString().padStart(3, "0");
+    const id = `RL-LARGE-${suffix}`;
+    const base = resource("rule", id, `Large Rule ${suffix}`, `large-base-${suffix}`);
+    const compare = resource("rule", id, `Large Rule ${suffix}`, `large-compare-${suffix}`);
+
+    baseResources.push(base);
+    compareResources.push(compare);
+    resourceComparisons.push({
+      base,
+      compare,
+      status: "modified",
+      match: {
+        method: "launch-resource-id",
+        confidence: "certain"
+      },
+      structuredChanges: [
+        {
+          id: `change:${id}:source`,
+          kind: "content-modified",
+          path: ["actions", "0", "settings", "source"],
+          description: "Representative custom code source changed."
+        }
+      ],
+      impact: {
+        impacted: false,
+        paths: []
+      },
+      detailedDiffState: "ready",
+      detailedDiff: modifiedDiff()
+    });
+  }
+
+  for (let index = 0; index < 25; index += 1) {
+    const suffix = index.toString().padStart(3, "0");
+    const id = `RL-LARGE-ADDED-${suffix}`;
+    const compare = resource("rule", id, `Large Added Rule ${suffix}`, `large-added-${suffix}`);
+
+    compareResources.push(compare);
+    resourceComparisons.push({
+      compare,
+      status: "added",
+      structuredChanges: [
+        {
+          id: `change:${id}:added`,
+          kind: "resource-added",
+          path: [],
+          description: "Representative rule was added."
+        }
+      ],
+      detailedDiffState: "ready",
+      detailedDiff: addedDiff()
+    });
+  }
+
+  for (let index = 0; index < 25; index += 1) {
+    const suffix = index.toString().padStart(3, "0");
+    const id = `RL-LARGE-REMOVED-${suffix}`;
+    const base = resource(
+      "rule",
+      id,
+      `Large Removed Rule ${suffix}`,
+      `large-removed-${suffix}`
+    );
+
+    baseResources.push(base);
+    resourceComparisons.push({
+      base,
+      status: "removed",
+      structuredChanges: [
+        {
+          id: `change:${id}:removed`,
+          kind: "resource-removed",
+          path: [],
+          description: "Representative rule was removed."
+        }
+      ],
+      detailedDiffState: "ready",
+      detailedDiff: removedDiff()
+    });
+  }
+
+  for (let index = 0; index < 20; index += 1) {
+    const suffix = index.toString().padStart(3, "0");
+    const id = `DE-LARGE-${suffix}`;
+    const resourceName = `Large Data Element ${suffix}`;
+    const base = resource("data-element", id, resourceName, `large-data-base-${suffix}`);
+    const compare = resource("data-element", id, resourceName, `large-data-compare-${suffix}`);
+    const impactPath = {
+      changedResourceId: "DE-CAMPAIGN",
+      changedResourceName: "Campaign ID",
+      resourceIds: ["DE-CAMPAIGN", id],
+      resourceNames: ["Campaign ID", resourceName],
+      direct: index % 2 === 0
+    };
+
+    baseResources.push(base);
+    compareResources.push(compare);
+    impacts.push(impactPath);
+    resourceComparisons.push({
+      base,
+      compare,
+      status: "unchanged",
+      structuredChanges: [],
+      impact: {
+        impacted: true,
+        paths: [impactPath]
+      },
+      detailedDiffState: "not-started"
+    });
+  }
+
+  return {
+    ...comparison,
+    base: {
+      ...comparison.base,
+      resources: baseResources,
+      metadata: {
+        ...comparison.base.metadata,
+        discoveredResourceCount: baseResources.length,
+        resolvedResourceCount: baseResources.length
+      },
+      completeness: {
+        state: "complete",
+        discovered: baseResources.length,
+        resolved: baseResources.length,
+        failed: 0,
+        failureRate: 0
+      }
+    },
+    compare: {
+      ...comparison.compare,
+      resources: compareResources,
+      metadata: {
+        ...comparison.compare.metadata,
+        discoveredResourceCount: compareResources.length,
+        resolvedResourceCount: compareResources.length,
+        failedResourceCount: 1
+      },
+      completeness: {
+        state: "complete-with-warnings",
+        discovered: compareResources.length + 1,
+        resolved: compareResources.length,
+        failed: 1,
+        failureRate: 1 / (compareResources.length + 1)
+      }
+    },
+    resources: resourceComparisons,
+    impacts,
+    warnings,
+    releaseNotes: [
+      comparison.releaseNotes,
+      "",
+      "## Large Fixture Summary",
+      "",
+      "- 180 representative custom-code rules changed.",
+      "- 25 representative rules were added.",
+      "- 25 representative rules were removed.",
+      "- 20 data elements have dependency impact."
     ].join("\n")
   };
 }
@@ -621,4 +931,77 @@ function tokenizeForFixture(content: string): DiffLine["syntaxTokens"] {
                 ? "identifier"
                 : "operator"
   }));
+}
+
+async function startHeartbeat(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const startedAt = performance.now();
+    const heartbeat = {
+      id: 0,
+      ticks: 0,
+      maxGapMs: 0,
+      startedAt,
+      lastAt: startedAt
+    };
+
+    heartbeat.id = window.setInterval(() => {
+      const now = performance.now();
+
+      heartbeat.ticks += 1;
+      heartbeat.maxGapMs = Math.max(heartbeat.maxGapMs, now - heartbeat.lastAt);
+      heartbeat.lastAt = now;
+    }, 20);
+
+    (
+      window as unknown as {
+        __launchDiffHeartbeat?: typeof heartbeat;
+      }
+    ).__launchDiffHeartbeat = heartbeat;
+  });
+}
+
+async function stopHeartbeat(page: Page): Promise<{ ticks: number; maxGapMs: number }> {
+  return page.evaluate(() => {
+    const host = window as unknown as {
+      __launchDiffHeartbeat?: {
+        id: number;
+        ticks: number;
+        maxGapMs: number;
+      };
+    };
+    const heartbeat = host.__launchDiffHeartbeat;
+
+    if (!heartbeat) {
+      return { ticks: 0, maxGapMs: Number.POSITIVE_INFINITY };
+    }
+
+    window.clearInterval(heartbeat.id);
+
+    return {
+      ticks: heartbeat.ticks,
+      maxGapMs: heartbeat.maxGapMs
+    };
+  });
+}
+
+async function countAnimationFrames(page: Page, durationMs: number): Promise<number> {
+  return page.evaluate((duration) => {
+    return new Promise<number>((resolve) => {
+      const start = performance.now();
+      let frames = 0;
+
+      function tick() {
+        frames += 1;
+
+        if (performance.now() - start >= duration) {
+          resolve(frames);
+          return;
+        }
+
+        requestAnimationFrame(tick);
+      }
+
+      requestAnimationFrame(tick);
+    });
+  }, durationMs);
 }
