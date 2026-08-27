@@ -156,6 +156,7 @@ a {
 }
 
 .compare-setup__header p,
+.compare-form-note,
 .compare-setup__footer p,
 .compare-panel-view > header p,
 .compare-release-header p {
@@ -171,6 +172,13 @@ a {
   font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
+}
+
+.compare-form-note {
+  max-width: 760px;
+  border-left: 3px solid var(--borderColor-accent-muted, #54aeff);
+  padding-left: 10px;
+  color: var(--fgColor-muted, #656d76);
 }
 
 .compare-mode-toggle,
@@ -910,6 +918,8 @@ a {
   min-width: 0;
   padding: 0 10px;
   overflow-wrap: anywhere;
+  tab-size: 2;
+  font-variant-ligatures: none;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1028,7 +1038,7 @@ a {
   table-layout: fixed;
   font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 0.78rem;
-  line-height: 1.55;
+  line-height: 1.45;
 }
 
 .compare-diff-table thead {
@@ -1047,33 +1057,45 @@ a {
 .compare-diff-table th:nth-child(1),
 .compare-diff-table th:nth-child(3),
 .compare-line-number {
-  width: 56px;
+  width: 64px;
 }
 
 .compare-diff-table th:nth-child(2),
 .compare-diff-table th:nth-child(4),
 .compare-code-cell {
-  width: calc((100% - 112px) / 2);
+  width: calc((100% - 128px) / 2);
   min-width: 0;
 }
 
 .compare-line-number {
   border-right: 1px solid var(--borderColor-default, #d0d7de);
   border-bottom: 1px solid var(--borderColor-muted, #d8dee4);
-  padding: 0 8px;
+  padding: 0 7px;
   background: var(--bgColor-muted, #f6f8fa);
   color: var(--fgColor-muted, #656d76);
   text-align: right;
+  vertical-align: top;
+  white-space: nowrap;
   user-select: none;
 }
 
+.compare-line-number__content {
+  display: inline-flex;
+  gap: 4px;
+  align-items: baseline;
+  justify-content: flex-end;
+  width: 100%;
+}
+
 .compare-line-marker {
-  display: inline-block;
-  width: 12px;
-  margin-right: 6px;
+  flex: 0 0 10px;
   color: var(--fgColor-muted, #656d76);
   font-weight: 700;
   text-align: center;
+}
+
+.compare-line-number__value {
+  min-width: 2ch;
 }
 
 .compare-code-cell {
@@ -1086,6 +1108,8 @@ a {
 .compare-code-cell code {
   display: block;
   overflow-wrap: anywhere;
+  tab-size: 2;
+  font-variant-ligatures: none;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1127,6 +1151,11 @@ a {
 .compare-token.is-changed {
   border-radius: 2px;
   background: color-mix(in srgb, var(--fgColor-attention, #9a6700) 22%, transparent);
+  color: var(--fgColor-default, #1f2328);
+}
+
+.compare-token.is-changed span {
+  color: inherit;
 }
 
 .syntax-comment {

@@ -95,7 +95,7 @@ export function groupResourceComparisons(
       .toLowerCase();
 
     if (
-      !filters.showUnchanged &&
+      shouldApplyReviewScope(filters) &&
       comparison.status === "unchanged" &&
       !comparison.impact?.impacted
     ) {
@@ -136,6 +136,10 @@ export function groupResourceComparisons(
         comparisonDisplayName(left).localeCompare(comparisonDisplayName(right))
       )
   })).filter((group) => group.resources.length > 0);
+}
+
+function shouldApplyReviewScope(filters: WorkspaceFilters): boolean {
+  return filters.status === "all" && !filters.showUnchanged;
 }
 
 export function comparisonCounts(
@@ -255,7 +259,10 @@ export function buildSanitizedDiagnosticReport(input: SanitizedDiagnosticInput):
       resources: {
         counts: resourceCounts,
         byType: countByResourceType(input.comparison.resources),
-        detailedDiffStates: countBy(input.comparison.resources, (comparison) => comparison.detailedDiffState),
+        detailedDiffStates: countBy(
+          input.comparison.resources,
+          (comparison) => comparison.detailedDiffState
+        ),
         structuredChangeKinds: countStructuredChangeKinds(input.comparison.resources)
       },
       review: input.reviewProgress,
@@ -269,7 +276,10 @@ export function buildSanitizedDiagnosticReport(input: SanitizedDiagnosticInput):
         byCode: countBy(input.comparison.warnings, (warning) => warning.code)
       },
       matching: {
-        byMethod: countBy(input.comparison.resources, (comparison) => comparison.match?.method ?? "unmatched"),
+        byMethod: countBy(
+          input.comparison.resources,
+          (comparison) => comparison.match?.method ?? "unmatched"
+        ),
         byConfidence: countBy(
           input.comparison.resources,
           (comparison) => comparison.match?.confidence ?? "unmatched"

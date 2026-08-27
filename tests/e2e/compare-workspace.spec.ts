@@ -70,6 +70,7 @@ test.describe("comparison workspace acceptance", () => {
     await expect(
       page.getByRole("heading", { name: "Compare deployed Adobe Tags libraries" })
     ).toBeVisible();
+    await expect(page.getByText("Prefer a non-minified Adobe Tags environment URL")).toBeVisible();
     await expect(page).toHaveScreenshot("compare-setup-light.png", {
       animations: "disabled"
     });
@@ -83,7 +84,9 @@ test.describe("comparison workspace acceptance", () => {
 
     await runMockComparison(page);
     await expect(page.getByRole("heading", { name: "Checkout Tracking Rule" })).toBeVisible();
+    await expect(page.locator(".compare-filter-summary")).toContainText("4 matching");
     await expectTableHeaderBeforeFirstDiffRow(page);
+    await expectLineMarkerBesideNumber(page);
     await expect(page).toHaveScreenshot("compare-result-dark.png", {
       animations: "disabled"
     });
@@ -223,6 +226,22 @@ test.describe("comparison workspace acceptance", () => {
 
     await page.keyboard.press("Escape");
     await expect(search).toHaveValue("");
+    await page
+      .getByRole("group", { name: "Status filter" })
+      .getByRole("button", { name: /^Added 1$/ })
+      .click();
+    await expect(page.getByRole("button", { name: /Signup Rule/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Checkout Tracking Rule/ })).toHaveCount(0);
+    await page
+      .getByRole("group", { name: "Status filter" })
+      .getByRole("button", { name: /^Same 1$/ })
+      .click();
+    await expect(page.getByRole("button", { name: /Marketing Source/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Signup Rule/ })).toHaveCount(0);
+    await page
+      .getByRole("group", { name: "Status filter" })
+      .getByRole("button", { name: /^All 4$/ })
+      .click();
     await page.getByRole("button", { name: /Checkout Tracking Rule/ }).click();
     await expect(page.getByRole("heading", { name: "Checkout Tracking Rule" })).toBeVisible();
     await page.locator(".compare-diff-pane").click();
@@ -345,6 +364,21 @@ async function expectDiffTableToFitViewport(page: Page): Promise<void> {
   });
 
   expect(fits).toBe(true);
+}
+
+async function expectLineMarkerBesideNumber(page: Page): Promise<void> {
+  const marker = await page
+    .locator(".compare-line-number.is-added .compare-line-marker")
+    .first()
+    .boundingBox();
+  const value = await page
+    .locator(".compare-line-number.is-added .compare-line-number__value")
+    .first()
+    .boundingBox();
+
+  expect(marker).not.toBeNull();
+  expect(value).not.toBeNull();
+  expect(Math.abs((marker?.y ?? 0) - (value?.y ?? 0))).toBeLessThan(2);
 }
 
 function fixtureComparison(): ComparisonResult {

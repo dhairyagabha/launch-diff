@@ -58,6 +58,11 @@ describe("compare workspace model", () => {
       )
     ).toHaveLength(1);
     expect(
+      groupResourceComparisons(comparisons, filters({ status: "unchanged" })).flatMap((group) =>
+        group.resources.map(comparisonDisplayNameForTest)
+      )
+    ).toEqual(["Unchanged Rule", "Hostname"]);
+    expect(
       groupResourceComparisons(comparisons, filters({ type: "data-element" }))[0]?.resources[0]
         ?.status
     ).toBe("unchanged");

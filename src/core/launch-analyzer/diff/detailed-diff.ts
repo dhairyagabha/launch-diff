@@ -451,7 +451,7 @@ function formatJavaScriptLikeSource(source: string): string {
     if (character === ",") {
       current = `${current.trimEnd()},`;
 
-      if (bracketDepth > 0 || parenDepth === 0) {
+      if (blockDepth > 0 || bracketDepth > 0 || parenDepth === 0) {
         pushLine();
       } else {
         current += " ";
@@ -476,6 +476,11 @@ function formatJavaScriptLikeSource(source: string): string {
       continue;
     }
 
+    if (character === "=" && shouldFormatAsAssignment(source, index)) {
+      current = `${current.trimEnd()} = `;
+      continue;
+    }
+
     if (/\s/.test(character)) {
       appendCollapsedSpace();
       continue;
@@ -491,6 +496,20 @@ function formatJavaScriptLikeSource(source: string): string {
   pushLine();
 
   return lines.length > 0 ? lines.join("\n") : source;
+}
+
+function shouldFormatAsAssignment(source: string, index: number): boolean {
+  const previous = source[index - 1];
+  const next = source[index + 1];
+
+  return (
+    previous !== "=" &&
+    previous !== "!" &&
+    previous !== "<" &&
+    previous !== ">" &&
+    next !== "=" &&
+    next !== ">"
+  );
 }
 
 function comparisonFileId(comparison: ResourceComparison): string {

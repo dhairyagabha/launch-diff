@@ -721,6 +721,10 @@ function SetupPanel(props: {
             Choose two current Launch library URLs. Analysis happens in a browser Worker after a
             thin server fetch handshake.
           </p>
+          <p className="compare-form-note" id="compare-readable-url-note">
+            Prefer a non-minified Adobe Tags environment URL when one is available. Minified URLs
+            still work, but readable URLs make review easier.
+          </p>
         </div>
         <div className="compare-setup__controls">
           <ThemeModeControl />
@@ -759,6 +763,7 @@ function SetupPanel(props: {
               type="url"
               inputMode="url"
               required
+              aria-describedby="compare-readable-url-note"
               placeholder="https://assets.example.com/.../launch-abc.min.js"
               value={props.baseUrl}
               onChange={(event) => props.setBaseUrl(event.currentTarget.value)}
@@ -779,6 +784,7 @@ function SetupPanel(props: {
               type="url"
               inputMode="url"
               required
+              aria-describedby="compare-readable-url-note"
               placeholder="https://assets.example.com/.../launch-def.min.js"
               value={props.compareUrl}
               onChange={(event) => props.setCompareUrl(event.currentTarget.value)}
@@ -1135,7 +1141,7 @@ function FilesChangedView({
           <div className="compare-filter-summary" aria-live="polite">
             <strong>{visibleResourceCount}</strong>
             <span>shown</span>
-            <span>{filterCounts.all} in scope</span>
+            <span>{filterCounts.matching} matching</span>
           </div>
           <label className="compare-search">
             <SearchIcon size={14} />
@@ -1436,6 +1442,7 @@ function DiffPanel(props: {
                     <DiffHunkRows
                       key={hunk.id}
                       hunk={hunk}
+                      language={diff.language}
                       expanded={props.expandedHunkIds.has(hunk.id)}
                       collapsedFoldIds={props.collapsedFoldIds}
                       folds={diff.functionFolds}
@@ -1620,6 +1627,7 @@ function ResourceDetails({
 
 function DiffHunkRows(props: {
   hunk: NonNullable<ResourceComparison["detailedDiff"]>["hunks"][number];
+  language: NonNullable<ResourceComparison["detailedDiff"]>["language"];
   expanded: boolean;
   collapsedFoldIds: Set<string>;
   folds: FunctionFold[];
@@ -1647,37 +1655,50 @@ function DiffHunkRows(props: {
         </tr>
       )}
       {visibleRows.map((row) => (
-        <DiffRow key={row.id} row={row} />
+        <DiffRow key={row.id} row={row} language={props.language} />
       ))}
     </>
   );
 }
 
-function DiffRow({ row }: { row: SplitDiffRow }) {
+function DiffRow({
+  row,
+  language
+}: {
+  row: SplitDiffRow;
+  language: NonNullable<ResourceComparison["detailedDiff"]>["language"];
+}) {
   return (
     <tr className={row.changed ? "is-changed" : undefined}>
-      <DiffSideCells line={row.base} side="base" changed={row.changed} />
-      <DiffSideCells line={row.compare} side="compare" changed={row.changed} />
+      <DiffSideCells line={row.base} side="base" changed={row.changed} language={language} />
+      <DiffSideCells line={row.compare} side="compare" changed={row.changed} language={language} />
     </tr>
   );
 }
 
-function DiffSideCells(props: { line?: DiffLine; side: "base" | "compare"; changed: boolean }) {
+function DiffSideCells(props: {
+  line?: DiffLine;
+  side: "base" | "compare";
+  changed: boolean;
+  language: NonNullable<ResourceComparison["detailedDiff"]>["language"];
+}) {
   const lineNumber = props.side === "base" ? props.line?.oldLineNumber : props.line?.newLineNumber;
   const statusClass = props.line ? `is-${props.line.type}` : "is-empty";
 
   return (
     <>
       <td className={`compare-line-number ${statusClass}`}>
-        <span className="compare-line-marker" aria-hidden="true">
-          {lineMarker(props.line)}
+        <span className="compare-line-number__content">
+          <span className="compare-line-marker" aria-hidden="true">
+            {lineMarker(props.line)}
+          </span>
+          <span className="compare-line-number__value">{lineNumber ?? ""}</span>
         </span>
-        {lineNumber ?? ""}
       </td>
       <td className={`compare-code-cell ${statusClass}`}>
         {props.line ? (
           <code>
-            <CodeFragments line={props.line} />
+            <CodeFragments line={props.line} language={props.language} />
           </code>
         ) : null}
       </td>
@@ -1697,7 +1718,13 @@ function lineMarker(line: DiffLine | undefined): string {
   return "";
 }
 
-function CodeFragments({ line }: { line: DiffLine }) {
+function CodeFragments({
+  line,
+  language
+}: {
+  line: DiffLine;
+  language: NonNullable<ResourceComparison["detailedDiff"]>["language"];
+}) {
   if (line.tokens?.length) {
     return (
       <>
@@ -1706,7 +1733,7 @@ function CodeFragments({ line }: { line: DiffLine }) {
             key={`${index}:${token.value}`}
             className={token.changed ? "compare-token is-changed" : undefined}
           >
-            {token.value}
+            <SyntaxFragments tokens={tokenizeSyntaxLine(token.value, language)} />
           </span>
         ))}
       </>
@@ -1714,14 +1741,18 @@ function CodeFragments({ line }: { line: DiffLine }) {
   }
 
   return (
+    <SyntaxFragments tokens={line.syntaxTokens ?? tokenizeSyntaxLine(line.content, language)} />
+  );
+}
+
+function SyntaxFragments({ tokens }: { tokens: SyntaxToken[] }) {
+  return (
     <>
-      {(line.syntaxTokens ?? [{ value: line.content, kind: "text" } satisfies SyntaxToken]).map(
-        (token, index) => (
-          <span key={`${index}:${token.value}`} className={`syntax-${token.kind}`}>
-            {token.value}
-          </span>
-        )
-      )}
+      {tokens.map((token, index) => (
+        <span key={`${index}:${token.value}`} className={`syntax-${token.kind}`}>
+          {token.value}
+        </span>
+      ))}
     </>
   );
 }
@@ -2005,9 +2036,11 @@ function StatusPill(props: { status: ResourceComparison["status"]; impacted: boo
 function resourceFilterCounts(
   comparisons: ResourceComparison[],
   filters: Pick<Parameters<typeof groupResourceComparisons>[1], "query" | "type" | "showUnchanged">
-): Record<StatusFilter, number> {
-  const counts: Record<StatusFilter, number> = {
+): Record<StatusFilter | "matching" | "review", number> {
+  const counts: Record<StatusFilter | "matching" | "review", number> = {
     all: 0,
+    matching: 0,
+    review: 0,
     modified: 0,
     added: 0,
     removed: 0,
@@ -2021,14 +2054,6 @@ function resourceFilterCounts(
     const resource = comparison.compare ?? comparison.base;
     const resourceType = resource?.identity.resourceType;
 
-    if (
-      !filters.showUnchanged &&
-      comparison.status === "unchanged" &&
-      !comparison.impact?.impacted
-    ) {
-      continue;
-    }
-
     if (filters.type !== "all" && resourceType !== filters.type) {
       continue;
     }
@@ -2037,13 +2062,19 @@ function resourceFilterCounts(
       continue;
     }
 
-    counts.all += 1;
+    counts.matching += 1;
     counts[comparison.status] += 1;
 
     if (comparison.impact?.impacted) {
       counts.impacted += 1;
     }
+
+    if (comparison.status !== "unchanged" || comparison.impact?.impacted) {
+      counts.review += 1;
+    }
   }
+
+  counts.all = filters.showUnchanged ? counts.matching : counts.review;
 
   return counts;
 }

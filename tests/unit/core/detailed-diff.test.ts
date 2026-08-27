@@ -259,6 +259,7 @@ describe("detailed diff engine", () => {
     const displaySource = populated.resources[0]?.detailedDiff?.baseDisplaySource ?? "";
 
     expect(displaySource).toContain("rules: [");
+    expect(displaySource).toContain("_satellite._container = {");
     expect(displaySource).toContain('id: "RL",');
     expect(displaySource).toContain("actions: [");
     expect(displaySource).not.toContain("_satellite._container={rules:[{");
