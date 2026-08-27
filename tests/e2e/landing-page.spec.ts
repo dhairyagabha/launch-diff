@@ -44,6 +44,7 @@ test.describe("landing page", () => {
     await expect(
       page.getByRole("heading", { name: "The review path is visible before analysis starts." })
     ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Public fetch boundary" })).toBeVisible();
     await expectNoAxeViolations(page);
   });
 

@@ -30,15 +30,6 @@ const storySections = [
   }
 ];
 
-const trustItems = [
-  "No Adobe authentication",
-  "No accounts or database",
-  "No AI dependency",
-  "No downloaded JavaScript execution",
-  "No persistent source storage",
-  "Only minimal aggregate usage measurement"
-];
-
 const reviewPrinciples = [
   {
     title: "Artifact first",
@@ -51,6 +42,33 @@ const reviewPrinciples = [
   {
     title: "Explicit uncertainty",
     body: "Failed, skipped, unresolved, and unsupported resources remain visible instead of being smoothed out."
+  }
+];
+
+const trustBoundaries = [
+  {
+    title: "Public fetch boundary",
+    items: [
+      "No Adobe authentication",
+      "No private crawling",
+      "Only parser-confirmed Launch resources are followed"
+    ]
+  },
+  {
+    title: "Static analysis boundary",
+    items: [
+      "No downloaded JavaScript execution",
+      "No AI dependency",
+      "No source-map interpretation"
+    ]
+  },
+  {
+    title: "Storage boundary",
+    items: [
+      "No accounts or database",
+      "No persistent source storage",
+      "Only minimal aggregate usage measurement"
+    ]
   }
 ];
 
@@ -120,25 +138,25 @@ export default function HomePage() {
       </section>
 
       <section id="how-it-works" className="landing-intro" aria-labelledby="intro-title">
-        <div className="landing-section-grid">
-          <div>
+        <div className="landing-intro__inner">
+          <div className="landing-intro__copy">
             <p className="landing-eyebrow">How it works</p>
             <h2 id="intro-title">LaunchDiff favors explicit evidence over tidy guesses.</h2>
+            <p>
+              The analyzer fetches canonical public URLs, follows only parser-confirmed Launch
+              resources, pretty-prints deployable JavaScript for review, and keeps every plausible
+              change visible until the deployed artifacts prove otherwise.
+            </p>
           </div>
-          <p>
-            The analyzer fetches canonical public URLs, follows only parser-confirmed Launch
-            resources, pretty-prints deployable JavaScript for review, and keeps every plausible
-            change visible until the deployed artifacts prove otherwise.
-          </p>
+          <ol className="landing-principles">
+            {reviewPrinciples.map((principle) => (
+              <li key={principle.title}>
+                <strong>{principle.title}</strong>
+                <span>{principle.body}</span>
+              </li>
+            ))}
+          </ol>
         </div>
-        <ul className="landing-principles">
-          {reviewPrinciples.map((principle) => (
-            <li key={principle.title}>
-              <strong>{principle.title}</strong>
-              <span>{principle.body}</span>
-            </li>
-          ))}
-        </ul>
       </section>
 
       <section id="features" className="landing-stories" aria-label="Product capabilities">
@@ -208,12 +226,23 @@ export default function HomePage() {
           <div className="landing-trust__heading">
             <p className="landing-eyebrow">Trust model</p>
             <h2 id="trust-title">Built for public deployed artifacts, not private storage.</h2>
+            <p>
+              LaunchDiff keeps the boundary visible: it fetches public library files, analyzes them
+              statically, and avoids durable storage for source, URLs, diffs, or notes.
+            </p>
           </div>
-          <ul>
-            {trustItems.map((item) => (
-              <li key={item}>{item}</li>
+          <div className="landing-trust__matrix">
+            {trustBoundaries.map((boundary) => (
+              <article key={boundary.title}>
+                <h3>{boundary.title}</h3>
+                <ul>
+                  {boundary.items.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </article>
             ))}
-          </ul>
+          </div>
         </div>
       </section>
 
