@@ -2398,6 +2398,7 @@ a {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
+  align-items: stretch;
   margin: 0;
   padding: 24px;
   background: var(--landing-muted-bg);
@@ -2409,7 +2410,7 @@ a {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
   min-width: 0;
 }
 
@@ -2451,6 +2452,8 @@ a {
   z-index: 1;
   display: grid;
   gap: 10px;
+  align-content: start;
+  min-height: 216px;
   border: 1px solid var(--landing-border);
   border-radius: 6px;
   padding: 16px;
@@ -3069,6 +3072,7 @@ a {
 
   .landing-doc-step {
     width: 100%;
+    min-height: auto;
   }
 
   .landing-footer__inner {
