@@ -154,6 +154,55 @@ describe("current Launch parser", () => {
     expect(runtimeComparison?.compare?.normalizedSource).not.toContain("2026-08-25T22:35:22Z");
   });
 
+  it("compares registered custom-code source wrappers by embedded script content", () => {
+    const embeddedSource = [
+      "// UBX Account Registration",
+      "document.addEventListener(\"ubxBasicConfigured\", function(){",
+      "  _satellite.getVar('User_Registration_Type');",
+      "});"
+    ].join("\n");
+    const baseUrl =
+      "https://assets.adobedtm.com/7e08552ade3f/cd31470b7293/ae45bd66c665/RCa278-source.js";
+    const compareUrl =
+      "https://assets.adobedtm.com/7e08552ade3f/cd31470b7293/ad97f2c3959c/RCa278-source.js";
+    const base = parseCurrentLaunchLibrary({
+      source: customCodeRuleSource({
+        wrapperUrl: baseUrl,
+        embeddedSource
+      }),
+      canonicalUrl: "https://assets.example.test/launch/production.js"
+    });
+    const compare = parseCurrentLaunchLibrary({
+      source: customCodeRuleSource({
+        wrapperUrl: compareUrl,
+        embeddedSource
+      }),
+      canonicalUrl: "https://assets.example.test/launch/development.js"
+    });
+    const result = compareResolvedLibraries(base, compare);
+    const ruleComparison = result.ok
+      ? result.comparison.resources.find(
+          (comparison) => comparison.compare?.identity.name === "Registered Script Rule"
+        )
+      : undefined;
+
+    expect(result.ok).toBe(true);
+    expect(ruleComparison?.status).toBe("unchanged");
+    expect(ruleComparison?.compare?.normalizedSource).toContain("UBX Account Registration");
+    expect(ruleComparison?.compare?.normalizedSource).not.toContain(compareUrl);
+    expect(ruleComparison?.compare?.raw).toEqual(
+      expect.objectContaining({
+        actions: expect.arrayContaining([
+          expect.objectContaining({
+            settings: expect.objectContaining({
+              source: expect.stringContaining(compareUrl)
+            })
+          })
+        ])
+      })
+    );
+  });
+
   it("preserves unsupported container properties as unmapped resources", () => {
     const source = `_satellite._container={
       buildInfo:{turbineVersion:"1.0.0",turbineBuildDate:"2026-01-01T00:00:00Z",buildDate:"2026-01-02T00:00:00Z"},
@@ -222,6 +271,27 @@ function runtimeOnlySource(input: {
     dataElements:{},
     extensions:{}
   };`;
+}
+
+function customCodeRuleSource(input: { wrapperUrl: string; embeddedSource: string }): string {
+  return `_satellite._container={
+    buildInfo:{turbineVersion:"29.1.0",turbineBuildDate:"2026-06-04T21:23:22Z",buildDate:"2026-08-20T22:03:04Z",minified:true},
+    company:{orgId:"ABCDEF1234567890ABCDEF12@AdobeOrg",dynamicCdnEnabled:false},
+    property:{name:"Thermofisher.com",id:"PR12345678901234567890123456789012",settings:{undefinedVarsReturnEmpty:false,domains:["thermofisher.com"],ruleComponentSequencingEnabled:true}},
+    environment:{id:"EN12345678901234567890123456789012",stage:"development"},
+    dataElements:{},
+    extensions:{},
+    rules:[{id:"RL12345678901234567890123456789012",name:"Registered Script Rule",events:[],conditions:[],actions:[{
+      modulePath:"core/src/lib/actions/customCode.js",
+      settings:{source:${JSON.stringify(registeredScript(input.wrapperUrl, input.embeddedSource))},language:"javascript",isExternal:true},
+      timeout:2000,
+      delayNext:true
+    }]}]
+  };`;
+}
+
+function registeredScript(sourceUrl: string, source: string): string {
+  return `_satellite.__registerScript(${JSON.stringify(sourceUrl)}, ${JSON.stringify(source)});`;
 }
 
 function countResources(

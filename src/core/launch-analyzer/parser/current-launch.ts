@@ -3,6 +3,7 @@ import * as t from "@babel/types";
 import { ANALYZER_MODEL_VERSION } from "../model/constants";
 import { calculateCompleteness } from "../model/completeness";
 import { fingerprintUnknown } from "../model/fingerprint";
+import { extractSatelliteRegisteredScriptSource } from "../normalizer/content";
 import type {
   AnalysisWarning,
   FetchMetadata,
@@ -265,6 +266,7 @@ function createRuleResources(
       launchResourceId: ruleId,
       name: ruleName,
       raw: rule,
+      normalized: normalizeRegisteredScriptSources(rule),
       children: ruleRecord ? createRuleChildren(ruleRecord) : [],
       fileIds: [fileId],
       metadata: {
@@ -309,6 +311,7 @@ function createDataElementResources(
       resourceType: "data-element",
       name,
       raw,
+      normalized: normalizeRegisteredScriptSources(raw),
       fileIds: [fileId],
       metadata: {
         modulePath: asString(dataElement?.modulePath),
@@ -413,6 +416,7 @@ function createRuleComponentChildren(
   return components.map((component, index) => {
     const componentRecord = asRecord(component);
     const modulePath = asString(componentRecord?.modulePath);
+    const normalized = normalizeRegisteredScriptSources(component);
 
     return {
       componentType,
@@ -421,8 +425,8 @@ function createRuleComponentChildren(
       name: modulePath,
       order: asNumber(componentRecord?.ruleOrder) ?? index,
       raw: component,
-      normalized: component,
-      normalizedSource: JSON.stringify(component)
+      normalized,
+      normalizedSource: JSON.stringify(normalized)
     };
   });
 }
@@ -500,6 +504,40 @@ function createComparableRuntimeConfiguration(raw: {
     company: raw.company,
     property: raw.property
   });
+}
+
+function normalizeRegisteredScriptSources(value: unknown): unknown {
+  if (typeof value === "string") {
+    return extractSatelliteRegisteredScriptSource(value) ?? value;
+  }
+
+  if (Array.isArray(value)) {
+    let changed = false;
+    const normalized = value.map((item) => {
+      const normalizedItem = normalizeRegisteredScriptSources(item);
+      changed ||= normalizedItem !== item;
+
+      return normalizedItem;
+    });
+
+    return changed ? normalized : value;
+  }
+
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  let changed = false;
+  const normalized = Object.fromEntries(
+    Object.entries(value).map(([key, entryValue]) => {
+      const normalizedValue = normalizeRegisteredScriptSources(entryValue);
+      changed ||= normalizedValue !== entryValue;
+
+      return [key, normalizedValue];
+    })
+  );
+
+  return changed ? normalized : value;
 }
 
 function createResolvedLibrary(input: {
