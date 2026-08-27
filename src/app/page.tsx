@@ -4,6 +4,7 @@ import {
   AlertIcon,
   ArrowRightIcon,
   BookIcon,
+  CheckCircleIcon,
   CodeReviewIcon,
   DatabaseIcon,
   DiffModifiedIcon,
@@ -14,6 +15,8 @@ import {
   GlobeIcon,
   NoteIcon,
   PackageDependentsIcon,
+  RowsIcon,
+  ServerIcon,
   ShieldCheckIcon,
   WorkflowIcon
 } from "@primer/octicons-react";
@@ -128,6 +131,33 @@ const trustFlow = [
   { label: "Reviewer workspace", icon: CodeReviewIcon }
 ];
 
+const heroPreviewSteps = [
+  {
+    id: "setup",
+    label: "Setup",
+    title: "Two public artifacts queued",
+    metric: "URL validation",
+    items: ["Canonical fetch handshake", "Non-minified URLs encouraged", "Sample config supported"],
+    icon: GlobeIcon
+  },
+  {
+    id: "analyze",
+    label: "Analyze",
+    title: "Static worker resolving resources",
+    metric: "No code execution",
+    items: ["Parser-confirmed deferred files", "External custom code fetched", "Failures kept visible"],
+    icon: ServerIcon
+  },
+  {
+    id: "review",
+    label: "Review",
+    title: "Diff evidence ready",
+    metric: "Split review",
+    items: ["Readable JavaScript diffs", "Dependency impact paths", "Deterministic release notes"],
+    icon: RowsIcon
+  }
+];
+
 const documentationItems = [
   {
     label: "Setup",
@@ -210,6 +240,54 @@ export default function HomePage() {
               Details
             </a>
           </div>
+          <fieldset className="landing-hero-preview">
+            <legend className="landing-visually-hidden">Analysis preview</legend>
+            {heroPreviewSteps.map((step) => (
+              <input
+                key={step.id}
+                className="landing-hero-preview__radio"
+                defaultChecked={step.id === "setup"}
+                id={`landing-hero-preview-${step.id}`}
+                name="landing-hero-preview"
+                type="radio"
+              />
+            ))}
+            <div className="landing-hero-preview__tabs" aria-label="Analysis preview states">
+              {heroPreviewSteps.map((step) => (
+                <label key={step.id} htmlFor={`landing-hero-preview-${step.id}`}>
+                  {step.label}
+                </label>
+              ))}
+            </div>
+            <div className="landing-hero-preview__panels">
+              {heroPreviewSteps.map((step) => {
+                const StepIcon = step.icon;
+
+                return (
+                  <article
+                    key={step.id}
+                    className={`landing-hero-preview__panel landing-hero-preview__panel--${step.id}`}
+                  >
+                    <div className="landing-hero-preview__heading">
+                      <StepIcon size={20} aria-hidden="true" />
+                      <div>
+                        <strong>{step.title}</strong>
+                        <span>{step.metric}</span>
+                      </div>
+                    </div>
+                    <ul>
+                      {step.items.map((item) => (
+                        <li key={item}>
+                          <CheckCircleIcon size={16} aria-hidden="true" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                );
+              })}
+            </div>
+          </fieldset>
           <p className="landing-hero__note">
             For accurate split review, open the comparison workspace on a desktop viewport, 1024
             CSS pixels or wider.
@@ -262,29 +340,39 @@ export default function HomePage() {
               notes or approves a publish.
             </p>
           </div>
-          <div className="landing-feature-grid">
-            {storySections.map((section) => {
+          <div className="landing-feature-stack">
+            {storySections.map((section, index) => {
               const SectionIcon = section.icon;
 
               return (
-                <article key={section.id} className="landing-feature-card">
-                  <div className="landing-feature-card__toolbar">
-                    <span>
-                      <SectionIcon size={18} aria-hidden="true" />
-                      {section.badge}
-                    </span>
-                    <span>{section.detail}</span>
+                <article
+                  key={section.id}
+                  className="landing-feature-showcase"
+                  data-reverse={index % 2 === 1 ? "true" : "false"}
+                >
+                  <div className="landing-feature-showcase__visual">
+                    <div className="landing-feature-showcase__toolbar">
+                      <span>
+                        <SectionIcon size={18} aria-hidden="true" />
+                        {section.badge}
+                      </span>
+                      <span>Actual workspace screenshot</span>
+                    </div>
+                    <Image
+                      className="landing-feature-showcase__image"
+                      src={section.image}
+                      alt={section.alt}
+                      width={1280}
+                      height={720}
+                      sizes="(max-width: 980px) calc(100vw - 48px), 760px"
+                      loading="eager"
+                    />
                   </div>
-                  <Image
-                    className="landing-feature-card__visual"
-                    src={section.image}
-                    alt={section.alt}
-                    width={1280}
-                    height={720}
-                    sizes="(max-width: 720px) calc(100vw - 36px), (max-width: 1180px) 50vw, 360px"
-                    loading="eager"
-                  />
-                  <div className="landing-feature-card__copy">
+                  <div className="landing-feature-showcase__copy">
+                    <div className="landing-feature-showcase__badge">
+                      <SectionIcon size={16} aria-hidden="true" />
+                      {section.detail}
+                    </div>
                     <p className="landing-eyebrow">{section.eyebrow}</p>
                     <h3>{section.title}</h3>
                     <p>{section.body}</p>
@@ -349,28 +437,41 @@ export default function HomePage() {
             </p>
           </div>
           <div className="landing-doc-shell">
-            <div className="landing-doc-tabs" aria-label="Documentation topics">
+            <div className="landing-doc-sidebar" aria-label="Documentation topics">
+              <div className="landing-doc-sidebar__header">
+                <BookIcon size={18} aria-hidden="true" />
+                Docs
+              </div>
               {documentationItems.map((item) => (
                 <span key={item.label}>{item.label}</span>
               ))}
             </div>
-            <ol className="landing-doc-list">
-              {documentationItems.map((item) => {
-                const ItemIcon = item.icon;
+            <div className="landing-doc-readme">
+              <div className="landing-panel-toolbar">
+                <span>
+                  <BookIcon size={18} aria-hidden="true" />
+                  README.md
+                </span>
+                <span>Public review guide</span>
+              </div>
+              <ol className="landing-doc-list">
+                {documentationItems.map((item) => {
+                  const ItemIcon = item.icon;
 
-                return (
-                  <li key={item.title}>
-                    <div className="landing-doc-list__icon">
-                      <ItemIcon size={18} aria-hidden="true" />
-                    </div>
-                    <div>
-                      <strong>{item.title}</strong>
-                      <span>{item.body}</span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
+                  return (
+                    <li key={item.title}>
+                      <div className="landing-doc-list__icon">
+                        <ItemIcon size={18} aria-hidden="true" />
+                      </div>
+                      <div>
+                        <strong>{item.title}</strong>
+                        <span>{item.body}</span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
           </div>
         </div>
       </section>

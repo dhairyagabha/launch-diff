@@ -8,13 +8,15 @@ test.describe("landing page", () => {
     await expect(
       page.getByRole("heading", { name: "Compare Adobe Launch libraries with confidence." })
     ).toBeVisible();
+    await page.locator('label[for="landing-hero-preview-analyze"]').click();
+    await expect(page.getByText("Static worker resolving resources")).toBeVisible();
     await expect(page.getByRole("link", { name: "LaunchDiff home" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Documentation" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Compare libraries" }).first()).toBeVisible();
-    await expect(page.locator(".landing-feature-card__visual")).toHaveCount(3);
+    await expect(page.locator(".landing-feature-showcase__image")).toHaveCount(3);
     await expect
       .poll(async () =>
-        page.locator(".landing-feature-card__visual").evaluateAll((images) =>
+        page.locator(".landing-feature-showcase__image").evaluateAll((images) =>
           images.every((image) => {
             const screenshot = image as HTMLImageElement;
             return screenshot.complete && screenshot.naturalWidth > 0 && screenshot.naturalHeight > 0;
@@ -22,7 +24,7 @@ test.describe("landing page", () => {
         )
       )
       .toBe(true);
-    const screenshotRatios = await page.locator(".landing-feature-card__visual").evaluateAll((images) =>
+    const screenshotRatios = await page.locator(".landing-feature-showcase__image").evaluateAll((images) =>
       images.map((image) => {
         const screenshot = image as HTMLImageElement;
         const bounds = screenshot.getBoundingClientRect();
