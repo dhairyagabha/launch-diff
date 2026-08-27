@@ -214,13 +214,54 @@ describe("detailed diff engine", () => {
       populated.resources[0]?.detailedDiff?.hunks.flatMap((hunk) =>
         hunk.rows.flatMap((row) => [row.base?.content, row.compare?.content])
       ) ?? [];
+    const baseDisplaySource = populated.resources[0]?.detailedDiff?.baseDisplaySource ?? "";
     const trimmedLines = renderedLines.map((line) => line?.trim());
 
+    expect(baseDisplaySource).toContain("actions: [");
+    expect(baseDisplaySource).toContain("source: |");
     expect(trimmedLines).toContain("function checkout() {");
     expect(trimmedLines).toContain('_satellite.getVar("Marketing Source");');
     expect(trimmedLines).toContain("return false;");
     expect(trimmedLines).toContain("return true;");
     expect(renderedLines).not.toContain(JSON.stringify(base.normalized));
+  });
+
+  it("pretty-prints minified Launch-like resource sources before building rows", () => {
+    const base = resource(
+      "RL-MINIFIED",
+      '_satellite._container={rules:[{id:"RL",name:"Checkout",actions:[{type:"customCode",enabled:true}]}]};'
+    );
+    const compare = resource(
+      "RL-MINIFIED",
+      '_satellite._container={rules:[{id:"RL",name:"Checkout",actions:[{type:"customCode",enabled:false}]}]};'
+    );
+    const populated = populateComparisonDetailedDiffs({
+      modelVersion: ANALYZER_MODEL_VERSION,
+      base: library([base]),
+      compare: library([compare]),
+      resources: [
+        {
+          base,
+          compare,
+          status: "modified",
+          match: {
+            method: "launch-resource-id",
+            confidence: "certain"
+          },
+          structuredChanges: [],
+          detailedDiffState: "queued"
+        }
+      ],
+      impacts: [],
+      warnings: [],
+      releaseNotes: ""
+    });
+    const displaySource = populated.resources[0]?.detailedDiff?.baseDisplaySource ?? "";
+
+    expect(displaySource).toContain("rules: [");
+    expect(displaySource).toContain('id: "RL",');
+    expect(displaySource).toContain("actions: [");
+    expect(displaySource).not.toContain("_satellite._container={rules:[{");
   });
 
   it("comparison results automatically queue changed resources for detailed diffs", () => {

@@ -48,6 +48,7 @@ import {
 } from "@/browser/analyzer";
 import {
   parseLaunchDiffConfig,
+  tokenizeSyntaxLine,
   type ComparisonResult,
   type DiffLine,
   type FunctionFold,
@@ -77,6 +78,7 @@ import {
 type SetupMode = "direct" | "config";
 type WorkspacePhase = "setup" | "running" | "ready";
 type AnalysisAction = "analyze" | "retry" | "refresh";
+type DiffViewMode = "changes" | "source";
 
 interface AnalysisUrls {
   baseUrl: string;
@@ -84,13 +86,13 @@ interface AnalysisUrls {
 }
 
 const STATUS_FILTERS: Array<{ value: StatusFilter; label: string }> = [
-  { value: "all", label: "All statuses" },
+  { value: "all", label: "All" },
   { value: "modified", label: "Modified" },
   { value: "added", label: "Added" },
   { value: "removed", label: "Removed" },
   { value: "unknown", label: "Unknown" },
-  { value: "unchanged", label: "Unchanged" },
-  { value: "impacted", label: "Impacted" }
+  { value: "unchanged", label: "Same" },
+  { value: "impacted", label: "Impact" }
 ];
 
 const TYPE_FILTERS: Array<{ value: TypeFilter; label: string }> = [
@@ -148,6 +150,8 @@ export function CompareWorkspace() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [showUnchanged, setShowUnchanged] = useState(false);
+  const [diffViewMode, setDiffViewMode] = useState<DiffViewMode>("changes");
+  const [wrapDiffLines, setWrapDiffLines] = useState(true);
   const [expandedHunkIds, setExpandedHunkIds] = useState<Set<string>>(() => new Set());
   const [collapsedFoldIds, setCollapsedFoldIds] = useState<Set<string>>(() => new Set());
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
@@ -617,6 +621,7 @@ export function CompareWorkspace() {
             {comparison && activeTab === "files" && (
               <FilesChangedView
                 selectedComparison={selectedComparison}
+                allComparisons={comparison.resources}
                 viewedResourceKeys={viewedResourceKeys}
                 visibleGroups={visibleGroups}
                 searchInputRef={searchInputRef}
@@ -624,12 +629,16 @@ export function CompareWorkspace() {
                 statusFilter={statusFilter}
                 typeFilter={typeFilter}
                 showUnchanged={showUnchanged}
+                diffViewMode={diffViewMode}
+                wrapDiffLines={wrapDiffLines}
                 expandedHunkIds={expandedHunkIds}
                 collapsedFoldIds={collapsedFoldIds}
                 setQuery={setQuery}
                 setStatusFilter={setStatusFilter}
                 setTypeFilter={setTypeFilter}
                 setShowUnchanged={setShowUnchanged}
+                setDiffViewMode={setDiffViewMode}
+                setWrapDiffLines={setWrapDiffLines}
                 setSelectedResourceKey={setSelectedResourceKey}
                 setViewedResourceKeys={setViewedResourceKeys}
                 setExpandedHunkIds={setExpandedHunkIds}
@@ -1054,6 +1063,7 @@ function ResultTabs(props: {
 
 function FilesChangedView({
   selectedComparison,
+  allComparisons,
   viewedResourceKeys,
   visibleGroups,
   searchInputRef,
@@ -1061,12 +1071,16 @@ function FilesChangedView({
   statusFilter,
   typeFilter,
   showUnchanged,
+  diffViewMode,
+  wrapDiffLines,
   expandedHunkIds,
   collapsedFoldIds,
   setQuery,
   setStatusFilter,
   setTypeFilter,
   setShowUnchanged,
+  setDiffViewMode,
+  setWrapDiffLines,
   setSelectedResourceKey,
   setViewedResourceKeys,
   setExpandedHunkIds,
@@ -1075,6 +1089,7 @@ function FilesChangedView({
   onNext
 }: {
   selectedComparison?: ResourceComparison;
+  allComparisons: ResourceComparison[];
   viewedResourceKeys: Set<string>;
   visibleGroups: ReturnType<typeof groupResourceComparisons>;
   searchInputRef: RefObject<HTMLInputElement | null>;
@@ -1082,12 +1097,16 @@ function FilesChangedView({
   statusFilter: StatusFilter;
   typeFilter: TypeFilter;
   showUnchanged: boolean;
+  diffViewMode: DiffViewMode;
+  wrapDiffLines: boolean;
   expandedHunkIds: Set<string>;
   collapsedFoldIds: Set<string>;
   setQuery: (value: string) => void;
   setStatusFilter: (value: StatusFilter) => void;
   setTypeFilter: (value: TypeFilter) => void;
   setShowUnchanged: (value: boolean) => void;
+  setDiffViewMode: (value: DiffViewMode) => void;
+  setWrapDiffLines: (value: boolean) => void;
   setSelectedResourceKey: (value: string) => void;
   setViewedResourceKeys: Dispatch<SetStateAction<Set<string>>>;
   setExpandedHunkIds: Dispatch<SetStateAction<Set<string>>>;
@@ -1095,10 +1114,29 @@ function FilesChangedView({
   onPrevious: () => void;
   onNext: () => void;
 }) {
+  const visibleResourceCount = visibleGroups.reduce(
+    (total, group) => total + group.resources.length,
+    0
+  );
+  const filterCounts = useMemo(
+    () =>
+      resourceFilterCounts(allComparisons, {
+        query,
+        type: typeFilter,
+        showUnchanged
+      }),
+    [allComparisons, query, showUnchanged, typeFilter]
+  );
+
   return (
     <section className="compare-files-view">
       <aside className="compare-resource-pane" aria-label="Changed resources">
         <div className="compare-filter-bar">
+          <div className="compare-filter-summary" aria-live="polite">
+            <strong>{visibleResourceCount}</strong>
+            <span>shown</span>
+            <span>{filterCounts.all} in scope</span>
+          </div>
           <label className="compare-search">
             <SearchIcon size={14} />
             <input
@@ -1109,20 +1147,45 @@ function FilesChangedView({
               onChange={(event) => setQuery(event.currentTarget.value)}
             />
           </label>
-          <label className="compare-filter-select">
-            <FilterIcon size={14} />
-            <select
-              aria-label="Status filter"
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.currentTarget.value as StatusFilter)}
+          <div className="compare-filter-scope" role="group" aria-label="Resource scope">
+            <button
+              type="button"
+              aria-pressed={!showUnchanged}
+              className={!showUnchanged ? "is-selected" : undefined}
+              title="Show changed and impacted resources"
+              onClick={() => setShowUnchanged(false)}
             >
-              {STATUS_FILTERS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+              Review
+            </button>
+            <button
+              type="button"
+              aria-pressed={showUnchanged}
+              className={showUnchanged ? "is-selected" : undefined}
+              title="Show every mapped resource"
+              onClick={() => setShowUnchanged(true)}
+            >
+              All
+            </button>
+          </div>
+          <div className="compare-filter-chips" role="group" aria-label="Status filter">
+            {STATUS_FILTERS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={statusFilter === option.value}
+                className={statusFilter === option.value ? "is-selected" : undefined}
+                onClick={() => setStatusFilter(option.value)}
+              >
+                {option.value !== "all" && option.value !== "impacted" ? (
+                  <StatusDot status={option.value} impacted={false} />
+                ) : (
+                  <FilterIcon size={12} />
+                )}
+                <span>{option.label}</span>
+                <strong>{filterCounts[option.value]}</strong>
+              </button>
+            ))}
+          </div>
           <label className="compare-filter-select">
             <FileCodeIcon size={14} />
             <select
@@ -1137,14 +1200,6 @@ function FilesChangedView({
               ))}
             </select>
           </label>
-          <label className="compare-checkbox">
-            <input
-              type="checkbox"
-              checked={showUnchanged}
-              onChange={(event) => setShowUnchanged(event.currentTarget.checked)}
-            />
-            Show unchanged
-          </label>
         </div>
         <ResourceTree
           groups={visibleGroups}
@@ -1156,9 +1211,13 @@ function FilesChangedView({
       <DiffPanel
         comparison={selectedComparison}
         viewedResourceKeys={viewedResourceKeys}
+        diffViewMode={diffViewMode}
+        wrapDiffLines={wrapDiffLines}
         expandedHunkIds={expandedHunkIds}
         collapsedFoldIds={collapsedFoldIds}
         setViewedResourceKeys={setViewedResourceKeys}
+        setDiffViewMode={setDiffViewMode}
+        setWrapDiffLines={setWrapDiffLines}
         setExpandedHunkIds={setExpandedHunkIds}
         setCollapsedFoldIds={setCollapsedFoldIds}
         onPrevious={onPrevious}
@@ -1205,9 +1264,9 @@ function ResourceTree(props: {
                     <span className="compare-resource-tree__name">
                       {comparisonDisplayName(comparison)}
                     </span>
-                    <span className="compare-visually-hidden">
-                      {statusLabel(comparison.status)}
-                      {comparison.impact?.impacted ? ", impacted" : ""}
+                    <span className="compare-resource-tree__status">
+                      <span>{compactStatusLabel(comparison.status)}</span>
+                      {comparison.impact?.impacted && <strong>Impact</strong>}
                     </span>
                     {viewed ? (
                       <EyeIcon aria-label="Viewed" size={14} />
@@ -1228,9 +1287,13 @@ function ResourceTree(props: {
 function DiffPanel(props: {
   comparison?: ResourceComparison;
   viewedResourceKeys: Set<string>;
+  diffViewMode: DiffViewMode;
+  wrapDiffLines: boolean;
   expandedHunkIds: Set<string>;
   collapsedFoldIds: Set<string>;
   setViewedResourceKeys: Dispatch<SetStateAction<Set<string>>>;
+  setDiffViewMode: (value: DiffViewMode) => void;
+  setWrapDiffLines: (value: boolean) => void;
   setExpandedHunkIds: Dispatch<SetStateAction<Set<string>>>;
   setCollapsedFoldIds: Dispatch<SetStateAction<Set<string>>>;
   onPrevious: () => void;
@@ -1263,7 +1326,11 @@ function DiffPanel(props: {
   }
 
   return (
-    <section className="compare-diff-pane" aria-label="Resource diff">
+    <section
+      className="compare-diff-pane"
+      aria-label="Resource diff"
+      data-wrap-lines={props.wrapDiffLines}
+    >
       <header className="compare-diff-header">
         <div>
           <p>{resourceTypeLabel(resourceTypeForComparison(props.comparison) as ResourceType)}</p>
@@ -1276,6 +1343,52 @@ function DiffPanel(props: {
           </div>
         </div>
         <div className="compare-diff-header__actions">
+          <div
+            className="compare-mode-toggle compare-mode-toggle--compact"
+            role="tablist"
+            aria-label="Diff view mode"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={props.diffViewMode === "changes"}
+              className={props.diffViewMode === "changes" ? "is-selected" : undefined}
+              onClick={() => props.setDiffViewMode("changes")}
+            >
+              Changes
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={props.diffViewMode === "source"}
+              className={props.diffViewMode === "source" ? "is-selected" : undefined}
+              onClick={() => props.setDiffViewMode("source")}
+            >
+              Source
+            </button>
+          </div>
+          <div
+            className="compare-mode-toggle compare-mode-toggle--compact"
+            role="group"
+            aria-label="Line layout"
+          >
+            <button
+              type="button"
+              aria-pressed={props.wrapDiffLines}
+              className={props.wrapDiffLines ? "is-selected" : undefined}
+              onClick={() => props.setWrapDiffLines(true)}
+            >
+              Wrap
+            </button>
+            <button
+              type="button"
+              aria-pressed={!props.wrapDiffLines}
+              className={!props.wrapDiffLines ? "is-selected" : undefined}
+              onClick={() => props.setWrapDiffLines(false)}
+            >
+              Scroll
+            </button>
+          </div>
           <button
             className="compare-icon-button"
             type="button"
@@ -1303,7 +1416,9 @@ function DiffPanel(props: {
 
       {diff ? (
         <>
-          {diff.binaryChanged ? (
+          {props.diffViewMode === "source" ? (
+            <ReadableSourceView diff={diff} wrapLines={props.wrapDiffLines} />
+          ) : diff.binaryChanged ? (
             <p className="compare-empty-state">Binary content changed.</p>
           ) : diff.hunks.length > 0 ? (
             <div className="compare-diff-table-wrap">
@@ -1351,6 +1466,73 @@ function DiffPanel(props: {
         </>
       )}
     </section>
+  );
+}
+
+function ReadableSourceView(props: {
+  diff: NonNullable<ResourceComparison["detailedDiff"]>;
+  wrapLines: boolean;
+}) {
+  return (
+    <div className="compare-source-view" data-wrap-lines={props.wrapLines}>
+      <SourcePane
+        title="Base"
+        source={props.diff.baseDisplaySource}
+        language={props.diff.language}
+      />
+      <SourcePane
+        title="Compare"
+        source={props.diff.compareDisplaySource}
+        language={props.diff.language}
+      />
+    </div>
+  );
+}
+
+function SourcePane(props: {
+  title: "Base" | "Compare";
+  source?: string;
+  language: NonNullable<ResourceComparison["detailedDiff"]>["language"];
+}) {
+  const lines = splitDisplaySource(props.source);
+
+  return (
+    <section className="compare-source-pane" aria-label={`${props.title} resource source`}>
+      <header>
+        <strong>{props.title}</strong>
+        <span>{lines.length === 1 ? "1 line" : `${lines.length} lines`}</span>
+      </header>
+      {lines.length > 0 ? (
+        <ol className="compare-source-lines">
+          {lines.map((line, index) => (
+            <li key={`${index}:${line}`}>
+              <code>
+                <SourceFragments line={line} language={props.language} />
+              </code>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="compare-empty-state">
+          No {props.title.toLowerCase()} source for this resource.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function SourceFragments(props: {
+  line: string;
+  language: NonNullable<ResourceComparison["detailedDiff"]>["language"];
+}) {
+  return (
+    <>
+      {tokenizeSyntaxLine(props.line, props.language).map((token, index) => (
+        <span key={`${index}:${token.value}`} className={`syntax-${token.kind}`}>
+          {token.value}
+        </span>
+      ))}
+    </>
   );
 }
 
@@ -1818,6 +2000,85 @@ function StatusPill(props: { status: ResourceComparison["status"]; impacted: boo
       {props.impacted && <strong>Impacted</strong>}
     </span>
   );
+}
+
+function resourceFilterCounts(
+  comparisons: ResourceComparison[],
+  filters: Pick<Parameters<typeof groupResourceComparisons>[1], "query" | "type" | "showUnchanged">
+): Record<StatusFilter, number> {
+  const counts: Record<StatusFilter, number> = {
+    all: 0,
+    modified: 0,
+    added: 0,
+    removed: 0,
+    unknown: 0,
+    unchanged: 0,
+    impacted: 0
+  };
+  const query = filters.query.trim().toLowerCase();
+
+  for (const comparison of comparisons) {
+    const resource = comparison.compare ?? comparison.base;
+    const resourceType = resource?.identity.resourceType;
+
+    if (
+      !filters.showUnchanged &&
+      comparison.status === "unchanged" &&
+      !comparison.impact?.impacted
+    ) {
+      continue;
+    }
+
+    if (filters.type !== "all" && resourceType !== filters.type) {
+      continue;
+    }
+
+    if (query && !resourceSearchText(comparison).includes(query)) {
+      continue;
+    }
+
+    counts.all += 1;
+    counts[comparison.status] += 1;
+
+    if (comparison.impact?.impacted) {
+      counts.impacted += 1;
+    }
+  }
+
+  return counts;
+}
+
+function resourceSearchText(comparison: ResourceComparison): string {
+  const resource = comparison.compare ?? comparison.base;
+
+  return [
+    comparisonDisplayName(comparison),
+    comparisonResourceKey(comparison),
+    resource?.identity.launchResourceId,
+    resource?.identity.resourceType,
+    ...(resource?.children.map((child) => child.name ?? child.moduleType ?? "") ?? [])
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function compactStatusLabel(status: ResourceComparison["status"]): string {
+  if (status === "unchanged") {
+    return "Same";
+  }
+
+  return statusLabel(status);
+}
+
+function splitDisplaySource(source: string | undefined): string[] {
+  if (!source) {
+    return [];
+  }
+
+  const normalized = source.replace(/\r\n?/g, "\n").replace(/\n$/, "");
+
+  return normalized ? normalized.split("\n") : [];
 }
 
 function validateAnalysisUrls(

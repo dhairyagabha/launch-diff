@@ -213,6 +213,8 @@ export interface DependencyImpactPath {
 export interface DetailedDiff {
   fileId: string;
   language: "javascript" | "json" | "html" | "css" | "text" | "binary" | "unknown";
+  baseDisplaySource?: string;
+  compareDisplaySource?: string;
   hunks: DiffHunk[];
   binaryChanged?: boolean;
   functionFolds: FunctionFold[];

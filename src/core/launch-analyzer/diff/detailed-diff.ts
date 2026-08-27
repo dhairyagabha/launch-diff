@@ -65,6 +65,8 @@ export function buildDetailedDiff(input: BuildDetailedDiffInput): DetailedDiff {
     return {
       fileId: input.fileId ?? "binary",
       language,
+      baseDisplaySource: input.baseSource,
+      compareDisplaySource: input.compareSource,
       hunks: [],
       binaryChanged: input.baseSource !== input.compareSource,
       functionFolds: []
@@ -79,6 +81,8 @@ export function buildDetailedDiff(input: BuildDetailedDiffInput): DetailedDiff {
   return {
     fileId: input.fileId ?? "source",
     language,
+    baseDisplaySource: input.baseSource,
+    compareDisplaySource: input.compareSource,
     hunks,
     functionFolds: buildFunctionFolds(input.baseSource, input.compareSource, rows, language)
   };
@@ -346,18 +350,30 @@ function looksLikeJavaScriptSource(value: string): boolean {
 function formatJavaScriptLikeSource(source: string): string {
   const lines: string[] = [];
   let current = "";
-  let depth = 0;
+  let blockDepth = 0;
+  let bracketDepth = 0;
+  let parenDepth = 0;
   let quote: string | undefined;
   let escaped = false;
+
+  function depth() {
+    return blockDepth + bracketDepth;
+  }
 
   function pushLine() {
     const trimmed = current.trim();
 
     if (trimmed) {
-      lines.push(`${indentation(depth)}${trimmed}`);
+      lines.push(`${indentation(depth())}${trimmed}`);
     }
 
     current = "";
+  }
+
+  function appendCollapsedSpace() {
+    if (current && !/\s$/.test(current)) {
+      current += " ";
+    }
   }
 
   for (let index = 0; index < source.length; index += 1) {
@@ -392,26 +408,81 @@ function formatJavaScriptLikeSource(source: string): string {
     if (character === "{") {
       current = `${current.trimEnd()} {`;
       pushLine();
-      depth += 1;
+      blockDepth += 1;
       continue;
     }
 
     if (character === "}") {
       pushLine();
-      depth = Math.max(0, depth - 1);
-      current = `${indentation(depth)}}`;
+      blockDepth = Math.max(0, blockDepth - 1);
+      current = "}";
+      continue;
+    }
+
+    if (character === "[") {
+      const trimmed = current.trimEnd();
+      const separator = trimmed.endsWith(":") ? " " : "";
+
+      current = `${trimmed}${separator}[`;
+      pushLine();
+      bracketDepth += 1;
+      continue;
+    }
+
+    if (character === "]") {
+      pushLine();
+      bracketDepth = Math.max(0, bracketDepth - 1);
+      current = "]";
+      continue;
+    }
+
+    if (character === "(") {
+      parenDepth += 1;
+      current += character;
+      continue;
+    }
+
+    if (character === ")") {
+      parenDepth = Math.max(0, parenDepth - 1);
+      current += character;
+      continue;
+    }
+
+    if (character === ",") {
+      current = `${current.trimEnd()},`;
+
+      if (bracketDepth > 0 || parenDepth === 0) {
+        pushLine();
+      } else {
+        current += " ";
+      }
+
       continue;
     }
 
     if (character === ";") {
-      current += ";";
+      current = `${current.trimEnd()};`;
       pushLine();
+      continue;
+    }
+
+    if (character === ":") {
+      current = `${current.trimEnd()}: `;
       continue;
     }
 
     if (character === "\n") {
       pushLine();
       continue;
+    }
+
+    if (/\s/.test(character)) {
+      appendCollapsedSpace();
+      continue;
+    }
+
+    if (current === "}" && /[A-Za-z_$]/.test(character)) {
+      current += " ";
     }
 
     current += character;

@@ -93,6 +93,12 @@ test.describe("comparison workspace acceptance", () => {
     await expect(page).toHaveScreenshot("compare-result-light.png", {
       animations: "disabled"
     });
+    await page.getByRole("tab", { name: "Source" }).click();
+    await expect(page.getByLabel("Base resource source")).toContainText("function trackCheckout");
+    await expect(page.getByLabel("Compare resource source")).toContainText("checkout_submit");
+    await expect(page).toHaveScreenshot("compare-source-view-light.png", {
+      animations: "disabled"
+    });
   });
 
   test("captures added, removed, impacted, resolved, and release note states", async ({
@@ -103,9 +109,7 @@ test.describe("comparison workspace acceptance", () => {
     await page.goto("/compare");
     await page.getByLabel("Use light theme").click();
     await runMockComparison(page);
-    await expect(page.getByRole("button", { name: "Retry failed resources" })).toHaveText(
-      "Retry"
-    );
+    await expect(page.getByRole("button", { name: "Retry failed resources" })).toHaveText("Retry");
 
     await page.getByRole("button", { name: "Copy sanitized diagnostic report" }).click();
     await expect(
@@ -187,9 +191,7 @@ test.describe("comparison workspace acceptance", () => {
     expect(postRenderFrames).toBeGreaterThanOrEqual(8);
 
     await page.keyboard.press("v");
-    await expect(
-      page.getByRole("button", { name: /Large Rule 149.*Viewed/ })
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: /Large Rule 149.*Viewed/ })).toBeVisible();
   });
 
   test("supports keyboard review workflow end to end", async ({ page }) => {
@@ -221,7 +223,18 @@ test.describe("comparison workspace acceptance", () => {
 
     await page.keyboard.press("Escape");
     await expect(search).toHaveValue("");
+    await page.getByRole("button", { name: /Checkout Tracking Rule/ }).click();
+    await expect(page.getByRole("heading", { name: "Checkout Tracking Rule" })).toBeVisible();
     await page.locator(".compare-diff-pane").click();
+    await expect(page.getByRole("button", { name: "Wrap" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    await expectDiffTableToFitViewport(page);
+    await page.getByRole("tab", { name: "Source" }).click();
+    await expect(page.getByLabel("Base resource source")).toContainText("function trackCheckout");
+    await expect(page.getByLabel("Compare resource source")).toContainText("checkout_submit");
+    await page.getByRole("tab", { name: "Changes" }).click();
     await page.keyboard.press("]");
     await expect(page.getByRole("heading", { name: "Impacted Resources" })).toBeVisible();
 
@@ -266,54 +279,57 @@ async function installMockAnalyzerWorker(
   comparison: ComparisonResult = fixtureComparison(),
   options: { resultDelayMs?: number } = {}
 ): Promise<void> {
-  await page.addInitScript(({ comparison, resultDelayMs }) => {
-    class MockAnalyzerWorker {
-      private listeners: Array<(event: { data: unknown }) => void> = [];
+  await page.addInitScript(
+    ({ comparison, resultDelayMs }) => {
+      class MockAnalyzerWorker {
+        private listeners: Array<(event: { data: unknown }) => void> = [];
 
-      addEventListener(type: string, listener: (event: { data: unknown }) => void) {
-        if (type === "message") {
-          this.listeners.push(listener);
-        }
-      }
-
-      postMessage(message: { id: string; type: string }) {
-        if (message.type === "cancel") {
-          this.emit({ id: message.id, type: "cancelled" });
-          return;
-        }
-
-        const progress: AnalysisProgress = {
-          phase: "preparing-diffs",
-          base: {
-            completed: 2,
-            total: 3
+        addEventListener(type: string, listener: (event: { data: unknown }) => void) {
+          if (type === "message") {
+            this.listeners.push(listener);
           }
-        };
+        }
 
-        window.setTimeout(() => this.emit({ id: message.id, type: "progress", progress }), 5);
-        window.setTimeout(
-          () => this.emit({ id: message.id, type: "result", comparison }),
-          resultDelayMs
-        );
-      }
+        postMessage(message: { id: string; type: string }) {
+          if (message.type === "cancel") {
+            this.emit({ id: message.id, type: "cancelled" });
+            return;
+          }
 
-      terminate() {
-        this.listeners = [];
-      }
+          const progress: AnalysisProgress = {
+            phase: "preparing-diffs",
+            base: {
+              completed: 2,
+              total: 3
+            }
+          };
 
-      private emit(data: unknown) {
-        for (const listener of this.listeners) {
-          listener({ data });
+          window.setTimeout(() => this.emit({ id: message.id, type: "progress", progress }), 5);
+          window.setTimeout(
+            () => this.emit({ id: message.id, type: "result", comparison }),
+            resultDelayMs
+          );
+        }
+
+        terminate() {
+          this.listeners = [];
+        }
+
+        private emit(data: unknown) {
+          for (const listener of this.listeners) {
+            listener({ data });
+          }
         }
       }
-    }
 
-    Object.defineProperty(window, "Worker", {
-      configurable: true,
-      writable: true,
-      value: MockAnalyzerWorker
-    });
-  }, { comparison, resultDelayMs: options.resultDelayMs ?? 15 });
+      Object.defineProperty(window, "Worker", {
+        configurable: true,
+        writable: true,
+        value: MockAnalyzerWorker
+      });
+    },
+    { comparison, resultDelayMs: options.resultDelayMs ?? 15 }
+  );
 }
 
 async function expectTableHeaderBeforeFirstDiffRow(page: Page): Promise<void> {
@@ -321,6 +337,14 @@ async function expectTableHeaderBeforeFirstDiffRow(page: Page): Promise<void> {
   const firstDiffRow = await page.locator(".compare-diff-table tbody tr").first().boundingBox();
 
   expect(tableHeader?.y).toBeLessThan(firstDiffRow?.y ?? 0);
+}
+
+async function expectDiffTableToFitViewport(page: Page): Promise<void> {
+  const fits = await page.locator(".compare-diff-table-wrap").evaluate((element) => {
+    return element.scrollWidth <= element.clientWidth + 1;
+  });
+
+  expect(fits).toBe(true);
 }
 
 function fixtureComparison(): ComparisonResult {
@@ -531,12 +555,7 @@ function largeFixtureComparison(): ComparisonResult {
   for (let index = 0; index < 25; index += 1) {
     const suffix = index.toString().padStart(3, "0");
     const id = `RL-LARGE-REMOVED-${suffix}`;
-    const base = resource(
-      "rule",
-      id,
-      `Large Removed Rule ${suffix}`,
-      `large-removed-${suffix}`
-    );
+    const base = resource("rule", id, `Large Removed Rule ${suffix}`, `large-removed-${suffix}`);
 
     baseResources.push(base);
     resourceComparisons.push({
@@ -801,6 +820,28 @@ function modifiedDiff(): DetailedDiff {
   return {
     fileId: "canonical",
     language: "javascript",
+    baseDisplaySource: [
+      "function trackCheckout() {",
+      '  const eventName = "checkout_start";',
+      "  analytics.track(eventName);",
+      "}",
+      "",
+      "function stableHelper() {",
+      "  return true;",
+      "}",
+      "const sampleRate = 0.1;"
+    ].join("\n"),
+    compareDisplaySource: [
+      "function trackCheckout() {",
+      '  const eventName = "checkout_submit";',
+      "  analytics.track(eventName);",
+      "}",
+      "",
+      "function stableHelper() {",
+      "  return true;",
+      "}",
+      "const sampleRate = 0.5;"
+    ].join("\n"),
     functionFolds: folds,
     hunks: [
       {
@@ -853,6 +894,7 @@ function addedDiff(): DetailedDiff {
   return {
     fileId: "canonical",
     language: "javascript",
+    compareDisplaySource: ["function signup() {", '  analytics.track("signup");', "}"].join("\n"),
     functionFolds: [],
     hunks: [
       {
@@ -889,6 +931,9 @@ function removedDiff(): DetailedDiff {
   return {
     fileId: "canonical",
     language: "javascript",
+    baseDisplaySource: ["function cleanup() {", '  _satellite.cookie.remove("legacy");', "}"].join(
+      "\n"
+    ),
     functionFolds: [],
     hunks: [
       {
