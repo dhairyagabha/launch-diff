@@ -1618,31 +1618,44 @@ a {
 }
 
 .landing-mark {
-  width: 56px;
-  height: 32px;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
   color: var(--fgColor-default, #1f2328);
 }
 
-.landing-mark rect {
+.landing-mark__frame {
   fill: var(--bgColor-default, #ffffff);
-  stroke: currentColor;
-  stroke-width: 1.5;
+  stroke: var(--borderColor-default, #d0d7de);
+  stroke-width: 1.4;
 }
 
-.landing-mark path {
+.landing-mark__divider,
+.landing-mark__line,
+.landing-mark__plus {
   fill: none;
-  stroke: var(--fgColor-success, #1a7f37);
-  stroke-width: 2;
+  stroke-width: 2.2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.landing-mark text {
-  fill: currentColor;
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0;
+.landing-mark__divider {
+  stroke: var(--borderColor-muted, #d8dee4);
+  stroke-width: 1.4;
+}
+
+.landing-mark__line--base {
+  stroke: var(--fgColor-danger, #d1242f);
+}
+
+.landing-mark__line--compare,
+.landing-mark__plus {
+  stroke: var(--fgColor-success, #1a7f37);
+}
+
+.landing-final .landing-mark {
+  width: 58px;
+  height: 58px;
 }
 
 .landing-nav {

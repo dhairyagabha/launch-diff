@@ -196,18 +196,20 @@ function LaunchDiffMark({ decorative }: { decorative?: boolean }) {
   return (
     <svg
       className="landing-mark"
-      viewBox="0 0 56 32"
+      viewBox="0 0 48 48"
       role={decorative ? undefined : "img"}
       aria-label={decorative ? undefined : "LaunchDiff mark"}
       aria-hidden={decorative ? "true" : undefined}
       focusable="false"
     >
-      <rect x="1" y="1" width="54" height="30" rx="6" />
-      <path d="M11 9 L5 16 L11 23" />
-      <path d="M45 9 L51 16 L45 23" />
-      <text x="14" y="21">
-        LD/
-      </text>
+      <rect className="landing-mark__frame" x="4" y="5" width="40" height="38" rx="9" />
+      <path className="landing-mark__divider" d="M24 12 V36" />
+      <path className="landing-mark__line landing-mark__line--base" d="M12 16 H19" />
+      <path className="landing-mark__line landing-mark__line--base" d="M12 24 H20.5" />
+      <path className="landing-mark__line landing-mark__line--base" d="M12 32 H18" />
+      <path className="landing-mark__line landing-mark__line--compare" d="M29 24 H36" />
+      <path className="landing-mark__line landing-mark__line--compare" d="M29 32 H38" />
+      <path className="landing-mark__plus" d="M33.5 13.5 V20.5 M30 17 H37" />
     </svg>
   );
 }
