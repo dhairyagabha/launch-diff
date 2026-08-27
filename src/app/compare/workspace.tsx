@@ -9,19 +9,23 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   CopyIcon,
+  DeviceDesktopIcon,
   DownloadIcon,
   EyeClosedIcon,
   EyeIcon,
   FileCodeIcon,
   FilterIcon,
+  MoonIcon,
   QuestionIcon,
   SearchIcon,
   StopIcon,
+  SunIcon,
   SyncIcon,
   UploadIcon,
   XCircleIcon,
   XIcon
 } from "@primer/octicons-react";
+import { useTheme } from "@primer/react";
 import {
   useCallback,
   useEffect,
@@ -680,25 +684,28 @@ function SetupPanel(props: {
             thin server fetch handshake.
           </p>
         </div>
-        <div className="compare-mode-toggle" role="tablist" aria-label="Input mode">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={props.setupMode === "direct"}
-            className={props.setupMode === "direct" ? "is-selected" : undefined}
-            onClick={() => props.setSetupMode("direct")}
-          >
-            Direct URLs
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={props.setupMode === "config"}
-            className={props.setupMode === "config" ? "is-selected" : undefined}
-            onClick={() => props.setSetupMode("config")}
-          >
-            Saved Config
-          </button>
+        <div className="compare-setup__controls">
+          <ThemeModeControl />
+          <div className="compare-mode-toggle" role="tablist" aria-label="Input mode">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={props.setupMode === "direct"}
+              className={props.setupMode === "direct" ? "is-selected" : undefined}
+              onClick={() => props.setSetupMode("direct")}
+            >
+              Direct URLs
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={props.setupMode === "config"}
+              className={props.setupMode === "config" ? "is-selected" : undefined}
+              onClick={() => props.setSetupMode("config")}
+            >
+              Saved Config
+            </button>
+          </div>
         </div>
       </div>
 
@@ -867,6 +874,7 @@ function WorkspaceHeader(props: {
         </div>
       </div>
       <div className="compare-header__actions">
+        <ThemeModeControl />
         <button className="compare-button" type="button" onClick={props.onEdit}>
           Edit
         </button>
@@ -893,6 +901,46 @@ function WorkspaceHeader(props: {
         )}
       </div>
     </header>
+  );
+}
+
+function ThemeModeControl() {
+  const { colorMode, setColorMode } = useTheme();
+  const mode = colorMode ?? "auto";
+
+  return (
+    <div className="compare-theme-control" role="group" aria-label="Theme mode">
+      <button
+        type="button"
+        aria-label="Use system theme"
+        aria-pressed={mode === "auto"}
+        className={mode === "auto" ? "is-selected" : undefined}
+        title="Use system theme"
+        onClick={() => setColorMode("auto")}
+      >
+        <DeviceDesktopIcon size={14} />
+      </button>
+      <button
+        type="button"
+        aria-label="Use light theme"
+        aria-pressed={mode === "day" || mode === "light"}
+        className={mode === "day" || mode === "light" ? "is-selected" : undefined}
+        title="Use light theme"
+        onClick={() => setColorMode("day")}
+      >
+        <SunIcon size={14} />
+      </button>
+      <button
+        type="button"
+        aria-label="Use dark theme"
+        aria-pressed={mode === "night" || mode === "dark"}
+        className={mode === "night" || mode === "dark" ? "is-selected" : undefined}
+        title="Use dark theme"
+        onClick={() => setColorMode("night")}
+      >
+        <MoonIcon size={14} />
+      </button>
+    </div>
   );
 }
 
@@ -1001,6 +1049,7 @@ function FilesChangedView({
           <label className="compare-filter-select">
             <FilterIcon size={14} />
             <select
+              aria-label="Status filter"
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.currentTarget.value as StatusFilter)}
             >
@@ -1014,6 +1063,7 @@ function FilesChangedView({
           <label className="compare-filter-select">
             <FileCodeIcon size={14} />
             <select
+              aria-label="Resource type filter"
               value={typeFilter}
               onChange={(event) => setTypeFilter(event.currentTarget.value as TypeFilter)}
             >
@@ -1091,6 +1141,10 @@ function ResourceTree(props: {
                     />
                     <span className="compare-resource-tree__name">
                       {comparisonDisplayName(comparison)}
+                    </span>
+                    <span className="compare-visually-hidden">
+                      {statusLabel(comparison.status)}
+                      {comparison.impact?.impacted ? ", impacted" : ""}
                     </span>
                     {viewed ? (
                       <EyeIcon aria-label="Viewed" size={14} />
@@ -1204,6 +1258,7 @@ function DiffPanel(props: {
           </ul>
         </details>
       )}
+      <ResourceDetails comparison={props.comparison} />
 
       {diff ? (
         <>
@@ -1253,6 +1308,39 @@ function DiffPanel(props: {
         </p>
       )}
     </section>
+  );
+}
+
+function ResourceDetails({ comparison }: { comparison: ResourceComparison }) {
+  const resource = comparison.compare ?? comparison.base;
+  const identity = resource?.identity;
+
+  return (
+    <details className="compare-resource-details">
+      <summary>Details</summary>
+      <dl>
+        <div>
+          <dt>Launch ID</dt>
+          <dd>{identity?.launchResourceId ?? "unidentified"}</dd>
+        </div>
+        <div>
+          <dt>Resource type</dt>
+          <dd>{identity?.resourceType ?? "unmapped"}</dd>
+        </div>
+        <div>
+          <dt>File provenance</dt>
+          <dd>{resource?.fileIds.join(", ") || "not mapped"}</dd>
+        </div>
+        <div>
+          <dt>Match</dt>
+          <dd>
+            {comparison.match
+              ? `${comparison.match.method} / ${comparison.match.confidence}`
+              : "unmatched"}
+          </dd>
+        </div>
+      </dl>
+    </details>
   );
 }
 
@@ -1306,7 +1394,12 @@ function DiffSideCells(props: { line?: DiffLine; side: "base" | "compare"; chang
 
   return (
     <>
-      <td className={`compare-line-number ${statusClass}`}>{lineNumber ?? ""}</td>
+      <td className={`compare-line-number ${statusClass}`}>
+        <span className="compare-line-marker" aria-hidden="true">
+          {lineMarker(props.line)}
+        </span>
+        {lineNumber ?? ""}
+      </td>
       <td className={`compare-code-cell ${statusClass}`}>
         {props.line ? (
           <code>
@@ -1316,6 +1409,18 @@ function DiffSideCells(props: { line?: DiffLine; side: "base" | "compare"; chang
       </td>
     </>
   );
+}
+
+function lineMarker(line: DiffLine | undefined): string {
+  if (line?.type === "added") {
+    return "+";
+  }
+
+  if (line?.type === "removed") {
+    return "-";
+  }
+
+  return "";
 }
 
 function CodeFragments({ line }: { line: DiffLine }) {
@@ -1609,6 +1714,7 @@ function StatusDot(props: { status: ResourceComparison["status"]; impacted: bool
     <span
       className={`compare-status-dot compare-status-dot--${props.status}`}
       data-impacted={props.impacted}
+      aria-hidden="true"
     />
   );
 }

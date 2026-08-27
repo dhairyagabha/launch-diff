@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
+    "start": "next start",
     "build": "next build",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:update": "playwright test --update-snapshots",
     "test:watch": "vitest",
     "typecheck": "next typegen && tsc --noEmit",
     "verify": "npm run typecheck && npm run lint && npm test"
@@ -24,9 +27,11 @@
   },
   "devDependencies": {
     "@adobe/reactor-turbine-schemas": "^10.9.0",
+    "@playwright/test": "^1.62.1",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "axe-core": "^4.13.0",
     "eslint": "latest",
     "eslint-config-next": "latest",
     "typescript": "latest",
