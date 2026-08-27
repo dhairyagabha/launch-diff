@@ -57,9 +57,9 @@ export default function HomePage() {
             <span aria-disabled="true">GitHub soon</span>
           )}
         </nav>
-        <Link className="landing-header__cta" href="/compare">
-          <span className="landing-copy-desktop">Compare libraries</span>
-          <span className="landing-copy-mobile">Explore on desktop</span>
+        <Link className="landing-header__cta" href="/compare" aria-label="Compare libraries">
+          <span className="landing-copy-desktop">Compare</span>
+          <span className="landing-copy-mobile">Use desktop</span>
         </Link>
       </header>
 
@@ -73,12 +73,12 @@ export default function HomePage() {
             impact.
           </p>
           <div className="landing-hero__actions">
-            <Link className="landing-primary-cta" href="/compare">
-              <span className="landing-copy-desktop">Compare libraries</span>
-              <span className="landing-copy-mobile">Explore on desktop</span>
+            <Link className="landing-primary-cta" href="/compare" aria-label="Compare libraries">
+              <span className="landing-copy-desktop">Compare</span>
+              <span className="landing-copy-mobile">Use desktop</span>
             </Link>
             <a className="landing-secondary-cta" href="#how-it-works">
-              How it works
+              Details
             </a>
           </div>
           <p className="landing-hero__note">
@@ -150,9 +150,9 @@ export default function HomePage() {
       <section className="landing-final" aria-labelledby="final-title">
         <LaunchDiffMark decorative />
         <h2 id="final-title">Know exactly what changed before you publish.</h2>
-        <Link className="landing-primary-cta" href="/compare">
-          <span className="landing-copy-desktop">Compare libraries</span>
-          <span className="landing-copy-mobile">Explore on desktop</span>
+        <Link className="landing-primary-cta" href="/compare" aria-label="Compare libraries">
+          <span className="landing-copy-desktop">Compare</span>
+          <span className="landing-copy-mobile">Use desktop</span>
         </Link>
       </section>
     </main>

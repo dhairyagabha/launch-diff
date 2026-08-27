@@ -25,7 +25,7 @@ test.describe("comparison workspace acceptance", () => {
     await page.goto("/compare");
     await page.getByLabel("Base library URL").fill(duplicatedUrl);
     await page.getByLabel("Compare library URL").fill(duplicatedUrl);
-    await page.getByRole("button", { name: "Compare Libraries" }).click();
+    await page.getByRole("button", { name: "Compare libraries" }).click();
     await expect(page.getByText("Base and compare URLs must be different.")).toBeVisible();
 
     await page.getByRole("tab", { name: "Saved Config" }).click();
@@ -57,7 +57,7 @@ test.describe("comparison workspace acceptance", () => {
     await expect(page.getByLabel("Base environment")).toHaveValue("Production");
     await expect(page.getByLabel("Compare environment")).toHaveValue("Staging");
 
-    await page.getByRole("button", { name: "Compare Libraries" }).click();
+    await page.getByRole("button", { name: "Compare libraries" }).click();
     await expect(page.getByRole("heading", { name: "Checkout Tracking Rule" })).toBeVisible();
   });
 
@@ -257,7 +257,7 @@ async function runMockComparison(page: Page): Promise<void> {
   await page
     .getByLabel("Compare library URL")
     .fill("https://assets.example.test/compare/launch.min.js");
-  await page.getByRole("button", { name: "Compare Libraries" }).click();
+  await page.getByRole("button", { name: "Compare libraries" }).click();
   await expect(page.getByText("Analysis completed with warnings")).toBeVisible();
 }
 

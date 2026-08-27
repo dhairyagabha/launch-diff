@@ -853,9 +853,9 @@ function SetupPanel(props: {
           The comparator is intentionally conservative: plausible mismatches stay visible instead of
           being forced into tidy matches.
         </p>
-        <button className="compare-primary-button" type="submit">
+        <button className="compare-primary-button" type="submit" aria-label="Compare libraries">
           <FileCodeIcon size={16} />
-          Compare Libraries
+          Compare
         </button>
       </div>
     </form>

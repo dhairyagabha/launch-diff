@@ -21,10 +21,10 @@ test.describe("landing page", () => {
     await page.setViewportSize({ width: 390, height: 840 });
     await page.goto("/");
 
-    await expect(page.getByRole("link", { name: "Explore on desktop" }).first()).toBeVisible();
+    await expect(page.getByText("Use desktop").first()).toBeVisible();
     await expect(page.getByText("The detailed comparison workspace opens at 1024 CSS pixels")).toBeVisible();
 
-    await page.getByRole("link", { name: "Explore on desktop" }).first().click();
+    await page.getByRole("link", { name: "Compare libraries" }).first().click();
     await expect(page.getByRole("heading", { name: "Desktop workspace required" })).toBeVisible();
     await expectNoAxeViolations(page);
   });
