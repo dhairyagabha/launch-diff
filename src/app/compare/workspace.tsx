@@ -1273,12 +1273,6 @@ function DiffPanel(props: {
               status={props.comparison.status}
               impacted={props.comparison.impact?.impacted ?? false}
             />
-            {props.comparison.match && (
-              <span>
-                {props.comparison.match.method} / {props.comparison.match.confidence}
-              </span>
-            )}
-            {diff && <span>{diff.language}</span>}
           </div>
         </div>
         <div className="compare-diff-header__actions">
@@ -1307,31 +1301,8 @@ function DiffPanel(props: {
         </div>
       </header>
 
-      {props.comparison.structuredChanges.length > 0 && (
-        <details className="compare-structured-changes">
-          <summary>Structured changes ({props.comparison.structuredChanges.length})</summary>
-          <ul>
-            {props.comparison.structuredChanges.map((change) => (
-              <li key={change.id}>
-                <strong>{change.kind}</strong>
-                <span>{change.path.join(".") || "resource"}</span>
-                <p>{change.description}</p>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-      <ResourceDetails comparison={props.comparison} />
-
       {diff ? (
         <>
-          {diff.functionFolds.length > 0 && (
-            <FunctionFoldList
-              folds={diff.functionFolds}
-              collapsedFoldIds={props.collapsedFoldIds}
-              setCollapsedFoldIds={props.setCollapsedFoldIds}
-            />
-          )}
           {diff.binaryChanged ? (
             <p className="compare-empty-state">Binary content changed.</p>
           ) : diff.hunks.length > 0 ? (
@@ -1364,17 +1335,71 @@ function DiffPanel(props: {
           ) : (
             <p className="compare-empty-state">No line-level differences were generated.</p>
           )}
+          <DiffSupplement
+            comparison={props.comparison}
+            diff={diff}
+            collapsedFoldIds={props.collapsedFoldIds}
+            setCollapsedFoldIds={props.setCollapsedFoldIds}
+          />
         </>
       ) : (
-        <p className="compare-empty-state">
-          Detailed diff state: {props.comparison.detailedDiffState}.
-        </p>
+        <>
+          <p className="compare-empty-state">
+            Detailed diff state: {props.comparison.detailedDiffState}.
+          </p>
+          <DiffSupplement comparison={props.comparison} />
+        </>
       )}
     </section>
   );
 }
 
-function ResourceDetails({ comparison }: { comparison: ResourceComparison }) {
+function DiffSupplement(props: {
+  comparison: ResourceComparison;
+  diff?: NonNullable<ResourceComparison["detailedDiff"]>;
+  collapsedFoldIds?: Set<string>;
+  setCollapsedFoldIds?: Dispatch<SetStateAction<Set<string>>>;
+}) {
+  const folds = props.diff ? flattenFunctionFolds(props.diff.functionFolds) : [];
+
+  return (
+    <section className="compare-diff-supplement" aria-label="Resource review details">
+      {props.diff && folds.length > 0 && props.collapsedFoldIds && props.setCollapsedFoldIds && (
+        <details className="compare-code-outline" open>
+          <summary>Code outline ({folds.length})</summary>
+          <FunctionFoldList
+            folds={props.diff.functionFolds}
+            collapsedFoldIds={props.collapsedFoldIds}
+            setCollapsedFoldIds={props.setCollapsedFoldIds}
+          />
+        </details>
+      )}
+      {props.comparison.structuredChanges.length > 0 && (
+        <details className="compare-structured-changes">
+          <summary>Structured changes ({props.comparison.structuredChanges.length})</summary>
+          <ul>
+            {props.comparison.structuredChanges.map((change) => (
+              <li key={change.id}>
+                <strong>{change.kind}</strong>
+                <span>{change.path.join(".") || "resource"}</span>
+                <p>{change.description}</p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <ResourceDetails comparison={props.comparison} diff={props.diff} />
+    </section>
+  );
+}
+
+function ResourceDetails({
+  comparison,
+  diff
+}: {
+  comparison: ResourceComparison;
+  diff?: NonNullable<ResourceComparison["detailedDiff"]>;
+}) {
   const resource = comparison.compare ?? comparison.base;
   const identity = resource?.identity;
 
@@ -1401,6 +1426,10 @@ function ResourceDetails({ comparison }: { comparison: ResourceComparison }) {
               ? `${comparison.match.method} / ${comparison.match.confidence}`
               : "unmatched"}
           </dd>
+        </div>
+        <div>
+          <dt>Diff language</dt>
+          <dd>{diff?.language ?? "not generated"}</dd>
         </div>
       </dl>
     </details>

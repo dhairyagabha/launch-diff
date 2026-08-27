@@ -232,6 +232,12 @@ function isChangedStatus(status: ChangeStatus): boolean {
 }
 
 function resourceSource(resource: LaunchResource): string | undefined {
+  const displaySource = resourceDisplaySource(resource.normalized);
+
+  if (displaySource !== undefined) {
+    return displaySource;
+  }
+
   if (resource.normalizedSource !== undefined) {
     return resource.normalizedSource;
   }
@@ -239,12 +245,181 @@ function resourceSource(resource: LaunchResource): string | undefined {
   if (typeof resource.normalized === "string") {
     return resource.normalized;
   }
+}
 
+function resourceDisplaySource(value: unknown): string | undefined {
   try {
-    return JSON.stringify(resource.normalized, null, 2);
+    if (typeof value === "string") {
+      return `${looksLikeJavaScriptSource(value) ? formatJavaScriptLikeSource(value) : value}\n`;
+    }
+
+    return `${renderDisplayValue(value, 0)}\n`;
   } catch {
     return undefined;
   }
+}
+
+function renderDisplayValue(value: unknown, depth: number): string {
+  if (typeof value === "string") {
+    return renderDisplayString(value, depth);
+  }
+
+  if (typeof value === "number" || typeof value === "boolean" || value === null) {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return renderDisplayArray(value, depth);
+  }
+
+  if (value === undefined) {
+    return "undefined";
+  }
+
+  if (value && typeof value === "object") {
+    return renderDisplayObject(value as Record<string, unknown>, depth);
+  }
+
+  return JSON.stringify(value);
+}
+
+function renderDisplayArray(values: unknown[], depth: number): string {
+  if (values.length === 0) {
+    return "[]";
+  }
+
+  const childIndent = indentation(depth + 1);
+  const currentIndent = indentation(depth);
+  const rendered = values.map((value) => `${childIndent}${renderDisplayValue(value, depth + 1)}`);
+
+  return `[\n${rendered.join(",\n")}\n${currentIndent}]`;
+}
+
+function renderDisplayObject(value: Record<string, unknown>, depth: number): string {
+  const entries = Object.entries(value);
+
+  if (entries.length === 0) {
+    return "{}";
+  }
+
+  const childIndent = indentation(depth + 1);
+  const currentIndent = indentation(depth);
+  const rendered = entries.map(
+    ([key, entryValue]) =>
+      `${childIndent}${displayObjectKey(key)}: ${renderDisplayValue(entryValue, depth + 1)}`
+  );
+
+  return `{\n${rendered.join(",\n")}\n${currentIndent}}`;
+}
+
+function renderDisplayString(value: string, depth: number): string {
+  const displayValue = looksLikeJavaScriptSource(value) ? formatJavaScriptLikeSource(value) : value;
+
+  if (displayValue.includes("\n")) {
+    const childIndent = indentation(depth + 1);
+    const lines = splitSourceLines(displayValue).map((line) => `${childIndent}${line}`);
+
+    return `|\n${lines.join("\n")}`;
+  }
+
+  return JSON.stringify(displayValue);
+}
+
+function displayObjectKey(key: string): string {
+  return /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key);
+}
+
+function indentation(depth: number): string {
+  return "  ".repeat(depth);
+}
+
+function looksLikeJavaScriptSource(value: string): boolean {
+  const trimmed = value.trim();
+
+  return (
+    /\b(function|return|const|let|var|if|for|while|class|new)\b/.test(trimmed) ||
+    /_satellite\.(getVar|track|logger)/.test(trimmed) ||
+    (trimmed.includes("{") && trimmed.includes(";"))
+  );
+}
+
+function formatJavaScriptLikeSource(source: string): string {
+  const lines: string[] = [];
+  let current = "";
+  let depth = 0;
+  let quote: string | undefined;
+  let escaped = false;
+
+  function pushLine() {
+    const trimmed = current.trim();
+
+    if (trimmed) {
+      lines.push(`${indentation(depth)}${trimmed}`);
+    }
+
+    current = "";
+  }
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index]!;
+
+    if (quote) {
+      current += character;
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+
+      if (character === quote) {
+        quote = undefined;
+      }
+
+      continue;
+    }
+
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      current += character;
+      continue;
+    }
+
+    if (character === "{") {
+      current = `${current.trimEnd()} {`;
+      pushLine();
+      depth += 1;
+      continue;
+    }
+
+    if (character === "}") {
+      pushLine();
+      depth = Math.max(0, depth - 1);
+      current = `${indentation(depth)}}`;
+      continue;
+    }
+
+    if (character === ";") {
+      current += ";";
+      pushLine();
+      continue;
+    }
+
+    if (character === "\n") {
+      pushLine();
+      continue;
+    }
+
+    current += character;
+  }
+
+  pushLine();
+
+  return lines.length > 0 ? lines.join("\n") : source;
 }
 
 function comparisonFileId(comparison: ResourceComparison): string {

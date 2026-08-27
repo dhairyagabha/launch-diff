@@ -707,17 +707,20 @@ a {
   padding-left: 6px;
 }
 
-.compare-structured-changes {
-  border-bottom: 1px solid var(--borderColor-default, #d0d7de);
-  padding: 10px 16px;
-}
-
-.compare-resource-details {
-  border-bottom: 1px solid var(--borderColor-default, #d0d7de);
-  padding: 10px 16px;
+.compare-diff-supplement {
+  display: grid;
+  border-top: 1px solid var(--borderColor-default, #d0d7de);
   background: var(--bgColor-muted, #f6f8fa);
 }
 
+.compare-code-outline,
+.compare-structured-changes,
+.compare-resource-details {
+  border-bottom: 1px solid var(--borderColor-default, #d0d7de);
+  padding: 10px 16px;
+}
+
+.compare-code-outline summary,
 .compare-structured-changes summary,
 .compare-resource-details summary {
   cursor: pointer;
@@ -765,9 +768,7 @@ a {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  border-bottom: 1px solid var(--borderColor-default, #d0d7de);
-  padding: 10px 16px;
-  background: var(--bgColor-muted, #f6f8fa);
+  margin-top: 10px;
 }
 
 .compare-fold-list button {
@@ -796,13 +797,14 @@ a {
 
 .compare-diff-table-wrap {
   overflow: auto;
+  border-bottom: 1px solid var(--borderColor-default, #d0d7de);
 }
 
 .compare-diff-table {
   width: 100%;
-  min-width: 900px;
+  min-width: 1040px;
   border-collapse: collapse;
-  table-layout: fixed;
+  table-layout: auto;
   font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 0.78rem;
   line-height: 1.55;
@@ -830,7 +832,7 @@ a {
 .compare-diff-table th:nth-child(2),
 .compare-diff-table th:nth-child(4),
 .compare-code-cell {
-  width: calc((100% - 128px) / 2);
+  min-width: 420px;
 }
 
 .compare-line-number {
@@ -861,8 +863,8 @@ a {
 
 .compare-code-cell code {
   display: block;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
+  overflow-wrap: normal;
+  white-space: pre;
 }
 
 .compare-line-number.is-added,

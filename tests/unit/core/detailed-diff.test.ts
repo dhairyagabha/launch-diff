@@ -164,6 +164,65 @@ describe("detailed diff engine", () => {
     expect(cache.size).toBe(2);
   });
 
+  it("renders resource diffs from a readable resource view instead of compact normalized source", () => {
+    const base = readableResource("RL-READABLE", {
+      id: "RL-READABLE",
+      name: "Readable Rule",
+      actions: [
+        {
+          modulePath: "core/src/lib/actions/customCode.js",
+          settings: {
+            source: 'function checkout(){_satellite.getVar("Marketing Source");return false;}'
+          }
+        }
+      ]
+    });
+    const compare = readableResource("RL-READABLE", {
+      id: "RL-READABLE",
+      name: "Readable Rule",
+      actions: [
+        {
+          modulePath: "core/src/lib/actions/customCode.js",
+          settings: {
+            source: 'function checkout(){_satellite.getVar("Marketing Source");return true;}'
+          }
+        }
+      ]
+    });
+    const populated = populateComparisonDetailedDiffs({
+      modelVersion: ANALYZER_MODEL_VERSION,
+      base: library([base]),
+      compare: library([compare]),
+      resources: [
+        {
+          base,
+          compare,
+          status: "modified",
+          match: {
+            method: "launch-resource-id",
+            confidence: "certain"
+          },
+          structuredChanges: [],
+          detailedDiffState: "queued"
+        }
+      ],
+      impacts: [],
+      warnings: [],
+      releaseNotes: ""
+    });
+    const renderedLines =
+      populated.resources[0]?.detailedDiff?.hunks.flatMap((hunk) =>
+        hunk.rows.flatMap((row) => [row.base?.content, row.compare?.content])
+      ) ?? [];
+    const trimmedLines = renderedLines.map((line) => line?.trim());
+
+    expect(trimmedLines).toContain("function checkout() {");
+    expect(trimmedLines).toContain('_satellite.getVar("Marketing Source");');
+    expect(trimmedLines).toContain("return false;");
+    expect(trimmedLines).toContain("return true;");
+    expect(renderedLines).not.toContain(JSON.stringify(base.normalized));
+  });
+
   it("comparison results automatically queue changed resources for detailed diffs", () => {
     const result = compareResolvedLibraries(
       library([resource("RL-MOD", "old"), resource("RL-SAME", "same")]),
@@ -245,6 +304,27 @@ function library(resources: LaunchResource[]): ResolvedLibrary {
       resolved: 1,
       failed: 0
     })
+  };
+}
+
+function readableResource(launchResourceId: string, normalized: unknown): LaunchResource {
+  const compact = JSON.stringify(normalized);
+
+  return {
+    identity: {
+      resourceType: "rule",
+      launchResourceId,
+      name: launchResourceId
+    },
+    raw: normalized,
+    normalized,
+    normalizedSource: compact,
+    contentFingerprint: compact,
+    children: [],
+    fileIds: ["canonical"],
+    dataElementReferences: [],
+    metadata: {},
+    warnings: []
   };
 }
 
