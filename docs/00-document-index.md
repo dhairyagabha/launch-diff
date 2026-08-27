@@ -32,3 +32,4 @@ This folder is the implementation specification for LaunchDiff.
 - `13-codex-master-prompt.md` — suggested initial prompt for Codex
 - `14-decision-log.md` — compact record of the agreed product decisions
 - `15-validation-checklist.md` — Phase 15 automated and manual validation checklist
+- `16-deployment.md` — Vercel deployment, environment variables, and production validation

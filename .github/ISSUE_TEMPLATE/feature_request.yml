@@ -1,0 +1,35 @@
+name: Feature request
+description: Propose a LaunchDiff improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        LaunchDiff v1 intentionally excludes Adobe API integration, accounts, databases, AI features, source maps, authenticated URLs, arbitrary crawling, and mobile diff review unless the specification changes.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What review or comparison problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe the behavior you want.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Conservative comparison impact
+      description: How should this preserve the rule that explicit extra differences are safer than hidden changes?
+    validations:
+      required: true
+  - type: textarea
+    id: fixtures
+    attributes:
+      label: Fixture or test ideas
+      description: What sanitized fixture or synthetic test would prove this works?

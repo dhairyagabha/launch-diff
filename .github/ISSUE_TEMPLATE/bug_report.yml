@@ -1,0 +1,60 @@
+name: Bug report
+description: Report a reproducible LaunchDiff issue using sanitized data.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include private Launch source, private URLs, site configuration, resource names, diffs, release notes, credentials, cookies, or tokens.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Use sanitized public fixtures or synthetic examples.
+      placeholder: |
+        1. Open /compare
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Parser
+        - Deferred resolver
+        - Fetch security
+        - Matching/normalization
+        - Dependency impact
+        - Diff renderer
+        - Release notes
+        - UI/accessibility
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: sanitized-diagnostics
+    attributes:
+      label: Sanitized diagnostic report
+      description: Paste only the user-controlled sanitized report, if available.
+      render: text
