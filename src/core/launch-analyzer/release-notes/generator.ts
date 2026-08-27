@@ -25,6 +25,7 @@ export interface GenerateReleaseNotesOptions {
 interface ReleaseNoteSections {
   summary: string[];
   directChanges: string[];
+  possibleRecreatedResources: string[];
   referenceChanges: string[];
   dependencyImpact: string[];
   warnings: string[];
@@ -45,6 +46,7 @@ export function generateReleaseNotes(
   const lines = [`# ${options.title ?? "LaunchDiff Review Summary"}`];
   const hasReviewEntries =
     sections.directChanges.length > 0 ||
+    sections.possibleRecreatedResources.length > 0 ||
     sections.referenceChanges.length > 0 ||
     sections.dependencyImpact.length > 0 ||
     sections.warnings.length > 0;
@@ -56,6 +58,7 @@ export function generateReleaseNotes(
 
   appendSection(lines, "Summary", sections.summary);
   appendSection(lines, "Direct Changes", sections.directChanges);
+  appendSection(lines, "Possible Recreated Resources", sections.possibleRecreatedResources);
   appendSection(lines, "Data Element References", sections.referenceChanges);
   appendSection(lines, "Dependency Impact", sections.dependencyImpact);
   appendSection(lines, "Analysis Warnings", sections.warnings);
@@ -73,14 +76,20 @@ function buildReleaseNoteSections(
     comparison.impacts,
     options.maxImpactedResourcesPerChange ?? 7
   );
+  const possibleRecreatedResources = possibleRecreatedResourceNotes(comparison.resources);
 
   return {
     summary: summaryNotes({
       statusCounts,
+      possibleRecreatedResourceCount: possibleRecreatedResources.notes.length,
       impactedResourceCount: impactedResourceCount(comparison.impacts),
       warningCount: warnings.length
     }),
-    directChanges: directChangeNotes(comparison.resources),
+    directChanges: directChangeNotes(
+      comparison.resources,
+      possibleRecreatedResources.consumedComparisons
+    ),
+    possibleRecreatedResources: possibleRecreatedResources.notes,
     referenceChanges: dataElementReferenceChangeNotes(comparison.resources),
     dependencyImpact,
     warnings
@@ -89,6 +98,7 @@ function buildReleaseNoteSections(
 
 function summaryNotes(input: {
   statusCounts: StatusCounts;
+  possibleRecreatedResourceCount: number;
   impactedResourceCount: number;
   warningCount: number;
 }): string[] {
@@ -108,6 +118,15 @@ function summaryNotes(input: {
       ? `Direct changes: ${directTotal} (${statusParts.join(", ")}).`
       : "Direct changes: none."
   ];
+
+  if (input.possibleRecreatedResourceCount > 0) {
+    notes.push(
+      `Possible recreated resources: ${input.possibleRecreatedResourceCount} ${pluralize(
+        "pair",
+        input.possibleRecreatedResourceCount
+      )} ${input.possibleRecreatedResourceCount === 1 ? "needs" : "need"} side-by-side review.`
+    );
+  }
 
   if (input.impactedResourceCount > 0) {
     notes.push(
@@ -151,7 +170,10 @@ function directStatusCounts(comparisons: ResourceComparison[]): StatusCounts {
   );
 }
 
-function directChangeNotes(comparisons: ResourceComparison[]): string[] {
+function directChangeNotes(
+  comparisons: ResourceComparison[],
+  consumedComparisons: Set<ResourceComparison> = new Set()
+): string[] {
   const notes: string[] = [];
   const unmappedSummary: StatusCounts = {
     added: 0,
@@ -163,7 +185,7 @@ function directChangeNotes(comparisons: ResourceComparison[]): string[] {
   for (const comparison of sortComparisons(comparisons)) {
     const resource = comparison.compare ?? comparison.base;
 
-    if (!resource || comparison.status === "unchanged") {
+    if (!resource || comparison.status === "unchanged" || consumedComparisons.has(comparison)) {
       continue;
     }
 
@@ -188,6 +210,143 @@ function directChangeNotes(comparisons: ResourceComparison[]): string[] {
   }
 
   return notes;
+}
+
+function possibleRecreatedResourceNotes(comparisons: ResourceComparison[]): {
+  notes: string[];
+  consumedComparisons: Set<ResourceComparison>;
+} {
+  const notes: string[] = [];
+  const consumedComparisons = new Set<ResourceComparison>();
+
+  for (const comparison of sortComparisons(comparisons)) {
+    if (
+      comparison.status !== "unknown" ||
+      comparison.match?.method !== "recreated-resource-candidate" ||
+      !comparison.base ||
+      !comparison.compare
+    ) {
+      continue;
+    }
+
+    notes.push(exactRecreatedResourceNote(comparison.compare));
+    consumedComparisons.add(comparison);
+  }
+
+  const removedByKey = groupUnconsumedComparisonsByReviewKey(
+    comparisons,
+    consumedComparisons,
+    "removed"
+  );
+  const addedByKey = groupUnconsumedComparisonsByReviewKey(
+    comparisons,
+    consumedComparisons,
+    "added"
+  );
+
+  for (const reviewKey of [...removedByKey.keys()].sort()) {
+    const removed = removedByKey.get(reviewKey) ?? [];
+    const added = addedByKey.get(reviewKey) ?? [];
+
+    if (removed.length !== 1 || added.length !== 1) {
+      continue;
+    }
+
+    const removedComparison = removed[0]!;
+    const addedComparison = added[0]!;
+    const base = removedComparison.base;
+    const compare = addedComparison.compare;
+
+    if (!base || !compare) {
+      continue;
+    }
+
+    notes.push(possibleRecreatedResourceNote(base, compare));
+    consumedComparisons.add(removedComparison);
+    consumedComparisons.add(addedComparison);
+  }
+
+  return {
+    notes,
+    consumedComparisons
+  };
+}
+
+function groupUnconsumedComparisonsByReviewKey(
+  comparisons: ResourceComparison[],
+  consumedComparisons: Set<ResourceComparison>,
+  status: "added" | "removed"
+): Map<string, ResourceComparison[]> {
+  const byKey = new Map<string, ResourceComparison[]>();
+
+  for (const comparison of sortComparisons(comparisons)) {
+    if (comparison.status !== status || consumedComparisons.has(comparison)) {
+      continue;
+    }
+
+    const resource = status === "added" ? comparison.compare : comparison.base;
+    const reviewKey = resource ? similarRecreatedResourceReviewKey(resource) : undefined;
+
+    if (!reviewKey) {
+      continue;
+    }
+
+    byKey.set(reviewKey, [...(byKey.get(reviewKey) ?? []), comparison]);
+  }
+
+  return byKey;
+}
+
+function exactRecreatedResourceNote(compare: LaunchResource): string {
+  const type = titleResourceTypeLabel(compare.identity.resourceType);
+
+  return `${type} ${quotedResourceName(compare)} appears as removed and added with different Launch IDs; review side by side as a possible recreation.`;
+}
+
+function possibleRecreatedResourceNote(base: LaunchResource, compare: LaunchResource): string {
+  const type = titleResourceTypeLabel(compare.identity.resourceType);
+
+  return `${type} ${quotedResourceName(base)} was removed and ${type} ${quotedResourceName(
+    compare
+  )} was added; the names differ only by environment/review labels, so review side by side as a possible recreation.`;
+}
+
+function similarRecreatedResourceReviewKey(resource: LaunchResource): string | undefined {
+  if (resource.identity.resourceType !== "rule") {
+    return undefined;
+  }
+
+  const name = resource.identity.name;
+
+  if (!name) {
+    return undefined;
+  }
+
+  const normalizedName = normalizeReviewLabelNoise(name);
+
+  if (!normalizedName) {
+    return undefined;
+  }
+
+  return JSON.stringify({
+    resourceType: resource.identity.resourceType,
+    normalizedName
+  });
+}
+
+function normalizeReviewLabelNoise(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/\s*:\s*/g, " : ")
+    .replace(/\s*:\s*\[qa\]\s*$/i, "")
+    .replace(/\s+\[qa\]\s*$/i, "")
+    .replace(/\s+qa\s*$/i, "")
+    .replace(/\s*:\s*\[countries:\s*all\]\s*/gi, " : ")
+    .replace(/\s*\[countries:\s*all\]\s*/gi, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\s*:\s*/g, ":")
+    .trim();
 }
 
 function directResourceNote(comparison: ResourceComparison): string | undefined {

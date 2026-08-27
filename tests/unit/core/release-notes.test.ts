@@ -150,10 +150,49 @@ describe("deterministic release notes", () => {
     const notes = result.ok ? result.comparison.releaseNotes : "";
 
     expect(notes).toContain(
-      'Rule "Shared Name Rule" needs review because a removed resource and an added resource share the same name but have different Launch IDs.'
+      'Possible recreated resources: 1 pair needs side-by-side review.'
+    );
+    expect(notes).toContain(
+      'Rule "Shared Name Rule" appears as removed and added with different Launch IDs; review side by side as a possible recreation.'
     );
     expect(notes).not.toContain('Rule "Shared Name Rule" was added.');
     expect(notes).not.toContain('Rule "Shared Name Rule" was removed.');
+  });
+
+  it("groups likely QA/environment recreated rules without changing conservative classifications", () => {
+    const result = compareResolvedLibraries(
+      library({
+        resources: [
+          rule(
+            "RL-BASE",
+            "CartSidebar [Countries: ALL] : [Tags: AEP]",
+            "base"
+          )
+        ]
+      }),
+      library({
+        resources: [
+          rule(
+            "RL-COMPARE",
+            "CartSidebar [Countries: ALL] : [Tags: AEP] : [QA]",
+            "compare"
+          )
+        ]
+      })
+    );
+    const notes = result.ok ? result.comparison.releaseNotes : "";
+
+    expect(result.ok ? result.comparison.resources.map((comparison) => comparison.status).sort() : []).toEqual([
+      "added",
+      "removed"
+    ]);
+    expect(notes).toContain(
+      'Rule "CartSidebar [Countries: ALL] : [Tags: AEP]" was removed and Rule "CartSidebar [Countries: ALL] : [Tags: AEP] : [QA]" was added; the names differ only by environment/review labels, so review side by side as a possible recreation.'
+    );
+    expect(notes).not.toContain('Rule "CartSidebar [Countries: ALL] : [Tags: AEP]" was removed.');
+    expect(notes).not.toContain(
+      'Rule "CartSidebar [Countries: ALL] : [Tags: AEP] : [QA]" was added.'
+    );
   });
 
   it("includes incomplete-analysis warnings and excludes ordinary build metadata", () => {
