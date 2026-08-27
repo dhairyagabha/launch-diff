@@ -314,7 +314,7 @@ function dependencyImpactNotes(
       const changedName = changedResourceDisplayName(changedResourceId, impactPaths);
       const impactedResources = unique(
         impactPaths
-          .map((impact) => impact.resourceNames[0] ?? impact.resourceIds[0])
+          .map((impact) => last(impact.resourceNames) ?? last(impact.resourceIds))
           .filter((name): name is string => Boolean(name))
       );
       const impactedSummary = formatNameSummary(
@@ -516,8 +516,12 @@ function resourceTypeFromGraphId(value: string): ResourceType | undefined {
 
 function impactedResourceCount(impacts: DependencyImpactPath[]): number {
   return unique(
-    impacts.map((impact) => impact.resourceIds[0]).filter((id): id is string => Boolean(id))
+    impacts.map((impact) => last(impact.resourceIds)).filter((id): id is string => Boolean(id))
   ).length;
+}
+
+function last<T>(values: T[]): T | undefined {
+  return values[values.length - 1];
 }
 
 function quotedResourceName(resource: LaunchResource): string {

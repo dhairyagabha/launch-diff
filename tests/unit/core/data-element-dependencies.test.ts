@@ -73,8 +73,8 @@ describe("Data Element dependency graph", () => {
 
     expect(impacts.impactsByResourceId.get("rule:Rule A")?.[0]).toMatchObject({
       changedResourceId: "data-element:DE-A",
-      resourceIds: ["rule:Rule A", "data-element:DE-B", "data-element:DE-A"],
-      resourceNames: ["Rule A", "DE-B", "DE-A"],
+      resourceIds: ["data-element:DE-A", "data-element:DE-B", "rule:Rule A"],
+      resourceNames: ["DE-A", "DE-B", "Rule A"],
       direct: false
     });
     expect(impacts.impactsByResourceId.get("data-element:DE-B")?.[0]).toMatchObject({
@@ -93,9 +93,9 @@ describe("Data Element dependency graph", () => {
     const impacts = calculateDependencyImpacts(graph, new Set(["data-element:DE-C"]));
 
     expect(impacts.impactsByResourceId.get("rule:Rule A")?.[0]?.resourceIds).toEqual([
-      "rule:Rule A",
+      "data-element:DE-C",
       "data-element:DE-B",
-      "data-element:DE-C"
+      "rule:Rule A"
     ]);
   });
 

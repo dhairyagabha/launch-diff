@@ -107,6 +107,7 @@ describe("current Launch parser", () => {
     );
     expect(dataElement?.identity).toMatchObject({
       resourceType: "data-element",
+      launchResourceId: "Hostname",
       name: "Hostname"
     });
     expect(dataElement?.metadata).toMatchObject({
@@ -122,6 +123,30 @@ describe("current Launch parser", () => {
       name: "Core"
     });
     expect(extension?.children).toHaveLength(2);
+  });
+
+  it("matches current-format Data Elements by their deployed lookup key", () => {
+    const base = parseCurrentLaunchLibrary({
+      source: dataElementOnlySource("return document.location.hostname;"),
+      canonicalUrl: "https://assets.example.test/launch/production.js"
+    });
+    const compare = parseCurrentLaunchLibrary({
+      source: dataElementOnlySource("return document.location.hostname;"),
+      canonicalUrl: "https://assets.example.test/launch/development.js"
+    });
+    const result = compareResolvedLibraries(base, compare);
+    const dataElementComparison = result.ok
+      ? result.comparison.resources.find(
+          (comparison) => comparison.compare?.identity.name === "Hostname"
+        )
+      : undefined;
+
+    expect(result.ok).toBe(true);
+    expect(dataElementComparison?.match).toMatchObject({
+      method: "launch-resource-id",
+      confidence: "certain"
+    });
+    expect(dataElementComparison?.status).toBe("unchanged");
   });
 
   it("does not classify environment-only runtime metadata as a change", () => {
@@ -292,6 +317,18 @@ function customCodeRuleSource(input: { wrapperUrl: string; embeddedSource: strin
 
 function registeredScript(sourceUrl: string, source: string): string {
   return `_satellite.__registerScript(${JSON.stringify(sourceUrl)}, ${JSON.stringify(source)});`;
+}
+
+function dataElementOnlySource(dataElementSource: string): string {
+  return `_satellite._container={
+    buildInfo:{turbineVersion:"29.1.0",turbineBuildDate:"2026-06-04T21:23:22Z",buildDate:"2026-08-20T22:03:04Z",minified:true},
+    company:{orgId:"ABCDEF1234567890ABCDEF12@AdobeOrg",dynamicCdnEnabled:false},
+    property:{name:"Thermofisher.com",id:"PR12345678901234567890123456789012",settings:{undefinedVarsReturnEmpty:false,domains:["thermofisher.com"],ruleComponentSequencingEnabled:true}},
+    environment:{id:"EN12345678901234567890123456789012",stage:"development"},
+    dataElements:{Hostname:{modulePath:"core/src/lib/dataElements/customCode.js",settings:{source:${JSON.stringify(dataElementSource)},language:"javascript",isExternal:false},storageDuration:"pageview"}},
+    extensions:{},
+    rules:[]
+  };`;
 }
 
 function countResources(

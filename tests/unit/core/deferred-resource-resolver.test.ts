@@ -142,6 +142,81 @@ describe("deferred Launch resource resolver", () => {
     ).toBe(embeddedSource);
   });
 
+  it("compares external HTML custom-code source URLs by fetched content", async () => {
+    const baseSourceUrl =
+      "https://assets.adobedtm.com/7e08552ade3f/cd31470b7293/ae45bd66c665/RCf92-source.js";
+    const compareSourceUrl =
+      "https://assets.adobedtm.com/7e08552ade3f/cd31470b7293/ad97f2c3959c/RCf92-source.js";
+    const htmlSource = `<script>window.ubxUtilities.consoleDebug();</script>`;
+    const fetcher = new StaticFetcher({
+      [baseSourceUrl]: htmlSource,
+      [compareSourceUrl]: htmlSource
+    });
+    const base = await resolveDeferredLaunchResources({
+      library: externalCustomCodeLibrary(baseSourceUrl, "https://assets.example.test/base.js", {
+        language: "html"
+      }),
+      fetcher
+    });
+    const compare = await resolveDeferredLaunchResources({
+      library: externalCustomCodeLibrary(
+        compareSourceUrl,
+        "https://assets.example.test/compare.js",
+        {
+          language: "html"
+        }
+      ),
+      fetcher
+    });
+    const result = compareResolvedLibraries(base.library, compare.library);
+
+    expect(fetcher.requestedUrls).toEqual([baseSourceUrl, compareSourceUrl]);
+    expect(result.ok).toBe(true);
+    expect(
+      result.ok
+        ? result.comparison.resources.find(
+            (comparison) => comparison.compare?.identity.name === "External Source Rule"
+          )?.status
+        : undefined
+    ).toBe("unchanged");
+    expect(
+      (compare.library.resources.find(
+        (resource) => resource.identity.name === "External Source Rule"
+      )?.raw as { actions: Array<{ settings: { source: string; language: string } }> }).actions[0]
+        ?.settings
+    ).toMatchObject({
+      source: htmlSource,
+      language: "html"
+    });
+  });
+
+  it("marks matched resources unknown when external custom-code content cannot be fetched", async () => {
+    const base = await resolveDeferredLaunchResources({
+      library: externalCustomCodeLibrary(
+        "https://assets.example.test/rules/base-missing-source.js",
+        "https://assets.example.test/base.js"
+      ),
+      fetcher: new StaticFetcher({})
+    });
+    const compare = await resolveDeferredLaunchResources({
+      library: externalCustomCodeLibrary(
+        "https://assets.example.test/rules/compare-missing-source.js",
+        "https://assets.example.test/compare.js"
+      ),
+      fetcher: new StaticFetcher({})
+    });
+    const result = compareResolvedLibraries(base.library, compare.library);
+
+    expect(result.ok).toBe(true);
+    expect(
+      result.ok
+        ? result.comparison.resources.find(
+            (comparison) => comparison.compare?.identity.name === "External Source Rule"
+          )?.status
+        : undefined
+    ).toBe("unknown");
+  });
+
   it("records unresolved external custom-code sources on the owning resource", async () => {
     const sourceUrl = "https://assets.example.test/rules/missing-source.js";
     const source = `_satellite._container={
@@ -290,7 +365,13 @@ function parseDeferredFixture() {
   };
 }
 
-function externalCustomCodeLibrary(sourceUrl: string, canonicalUrl: string) {
+function externalCustomCodeLibrary(
+  sourceUrl: string,
+  canonicalUrl: string,
+  options: { language?: "javascript" | "html" } = {}
+) {
+  const language = options.language ?? "javascript";
+
   return parseCurrentLaunchLibrary({
     source: `_satellite._container={
       buildInfo:{turbineVersion:"29.0.0",turbineBuildDate:"2026-06-01T00:00:00Z",buildDate:"2026-06-13T01:22:12Z",minified:true},
@@ -301,7 +382,7 @@ function externalCustomCodeLibrary(sourceUrl: string, canonicalUrl: string) {
       extensions:{},
       rules:[{id:"RL12345678901234567890123456789012",name:"External Source Rule",events:[],conditions:[],actions:[{
         modulePath:"core/src/lib/actions/customCode.js",
-        settings:{source:${JSON.stringify(sourceUrl)},language:"javascript",isExternal:true},
+        settings:{source:${JSON.stringify(sourceUrl)},language:${JSON.stringify(language)},isExternal:true},
         timeout:2000,
         delayNext:true
       }]}]

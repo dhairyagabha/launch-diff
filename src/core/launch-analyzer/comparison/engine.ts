@@ -163,10 +163,7 @@ function applyComparisonSemantics(
     if (comparison.base && comparison.compare) {
       const matchedComparison = addMatchedResourceStructuredChanges(comparison);
 
-      if (
-        matchedComparison.status === "modified" &&
-        matchedResourceHasUnresolvedExternalCustomCode(matchedComparison)
-      ) {
+      if (matchedResourceHasUnresolvedExternalCustomCode(matchedComparison)) {
         return unknownBecauseExternalCustomCodeSourceIsUnresolved(matchedComparison);
       }
 
@@ -222,7 +219,7 @@ function mergeDependencyImpactAnalyses(
 
       impactsByKey.set(key, impact);
 
-      const impactedResourceId = impact.resourceIds[0];
+      const impactedResourceId = impact.resourceIds[impact.resourceIds.length - 1];
 
       if (impactedResourceId) {
         impactsByResourceId.set(impactedResourceId, [

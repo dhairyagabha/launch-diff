@@ -90,18 +90,19 @@ export function calculateDependencyImpacts(
   graph: DependencyGraph,
   changedResourceIds: Set<string>
 ): DependencyImpactAnalysis {
-  const edgesBySource = groupEdgesBySource(graph.edges);
+  const edgesByTarget = groupEdgesByTarget(graph.edges);
   const nodeNames = new Map(graph.nodes.map((node) => [node.resourceId, node.resourceName]));
   const impacts: DependencyImpactPath[] = [];
   const impactsByResourceId = new Map<string, DependencyImpactPath[]>();
 
-  for (const node of graph.nodes) {
-    if (changedResourceIds.has(node.resourceId)) {
-      continue;
-    }
+  for (const changedResourceId of changedResourceIds) {
+    for (const path of findImpactedResourcePaths(changedResourceId, edgesByTarget)) {
+      const impactedResourceId = path[path.length - 1];
 
-    for (const path of findImpactPaths(node.resourceId, edgesBySource, changedResourceIds)) {
-      const changedResourceId = path[path.length - 1]!;
+      if (!impactedResourceId) {
+        continue;
+      }
+
       const impact: DependencyImpactPath = {
         changedResourceId,
         changedResourceName: nodeNames.get(changedResourceId),
@@ -111,8 +112,8 @@ export function calculateDependencyImpacts(
       };
 
       impacts.push(impact);
-      impactsByResourceId.set(node.resourceId, [
-        ...(impactsByResourceId.get(node.resourceId) ?? []),
+      impactsByResourceId.set(impactedResourceId, [
+        ...(impactsByResourceId.get(impactedResourceId) ?? []),
         impact
       ]);
     }
@@ -257,47 +258,43 @@ function resourceToDependencyNode(resource: LaunchResource): DependencyGraphNode
   };
 }
 
-function findImpactPaths(
-  startResourceId: string,
-  edgesBySource: Map<string, DependencyGraphEdge[]>,
-  changedResourceIds: Set<string>
+function findImpactedResourcePaths(
+  changedResourceId: string,
+  edgesByTarget: Map<string, DependencyGraphEdge[]>
 ): string[][] {
   const paths: string[][] = [];
-  const queue = [{ resourceId: startResourceId, path: [startResourceId] }];
+  const queue = [{ resourceId: changedResourceId, path: [changedResourceId] }];
 
   while (queue.length > 0) {
     const next = queue.shift()!;
-    const edges = edgesBySource.get(next.resourceId) ?? [];
+    const consumerEdges = edgesByTarget.get(next.resourceId) ?? [];
 
-    for (const edge of edges) {
-      if (next.path.includes(edge.toResourceId)) {
+    for (const edge of consumerEdges) {
+      if (next.path.includes(edge.fromResourceId)) {
         continue;
       }
 
-      const path = [...next.path, edge.toResourceId];
+      const path = [...next.path, edge.fromResourceId];
 
-      if (changedResourceIds.has(edge.toResourceId)) {
-        paths.push(path);
-      } else {
-        queue.push({
-          resourceId: edge.toResourceId,
-          path
-        });
-      }
+      paths.push(path);
+      queue.push({
+        resourceId: edge.fromResourceId,
+        path
+      });
     }
   }
 
   return paths;
 }
 
-function groupEdgesBySource(edges: DependencyGraphEdge[]): Map<string, DependencyGraphEdge[]> {
-  const edgesBySource = new Map<string, DependencyGraphEdge[]>();
+function groupEdgesByTarget(edges: DependencyGraphEdge[]): Map<string, DependencyGraphEdge[]> {
+  const edgesByTarget = new Map<string, DependencyGraphEdge[]>();
 
   for (const edge of edges) {
-    edgesBySource.set(edge.fromResourceId, [...(edgesBySource.get(edge.fromResourceId) ?? []), edge]);
+    edgesByTarget.set(edge.toResourceId, [...(edgesByTarget.get(edge.toResourceId) ?? []), edge]);
   }
 
-  return edgesBySource;
+  return edgesByTarget;
 }
 
 function dedupeReferences(references: DataElementReference[]): DataElementReference[] {

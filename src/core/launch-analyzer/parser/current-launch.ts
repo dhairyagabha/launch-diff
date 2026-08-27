@@ -309,6 +309,7 @@ function createDataElementResources(
 
     return createLaunchResource({
       resourceType: "data-element",
+      launchResourceId: name,
       name,
       raw,
       normalized: normalizeRegisteredScriptSources(raw),

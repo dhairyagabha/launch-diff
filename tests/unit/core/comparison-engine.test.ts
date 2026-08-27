@@ -196,10 +196,38 @@ describe("comparison engine", () => {
       paths: [
         {
           changedResourceId: "data-element:Changed DE",
+          resourceIds: ["data-element:Changed DE", "rule:Rule A"],
+          resourceNames: ["Changed DE", "Rule A"],
           direct: true
         }
       ]
     });
+  });
+
+  it("does not treat a modified Rule as a dependency-impact source", () => {
+    const base = library({
+      resources: [
+        rule("Rule A", "old-rule", { settings: { source: `_satellite.getVar("Stable DE");` } }),
+        dataElement("Stable DE", "same")
+      ]
+    });
+    const compare = library({
+      resources: [
+        rule("Rule A", "new-rule", { settings: { source: `_satellite.getVar("Stable DE");` } }),
+        dataElement("Stable DE", "same")
+      ]
+    });
+    const result = compareResolvedLibraries(base, compare);
+    const ruleComparison = result.ok
+      ? result.comparison.resources.find(
+          (comparison) => comparison.compare?.identity.name === "Rule A"
+        )
+      : undefined;
+
+    expect(result.ok).toBe(true);
+    expect(ruleComparison?.status).toBe("modified");
+    expect(ruleComparison?.impact).toBeUndefined();
+    expect(result.ok ? result.comparison.impacts : []).toEqual([]);
   });
 
   it("attaches dependency impact when a referenced Data Element is added", () => {

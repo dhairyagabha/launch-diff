@@ -51,6 +51,7 @@ import {
   parseLaunchDiffConfig,
   tokenizeSyntaxLine,
   type ComparisonResult,
+  type DependencyImpactPath,
   type DiffLine,
   type FunctionFold,
   type LaunchDiffConfig,
@@ -1932,7 +1933,11 @@ function ImpactedView({ comparison }: { comparison: ComparisonResult }) {
                 {resource.impact?.paths.map((path, index) => (
                   <li key={`${path.changedResourceId}:${index}`}>
                     <strong>{path.direct ? "Direct" : "Transitive"}</strong>
-                    <span>{path.resourceNames.join(" -> ") || path.resourceIds.join(" -> ")}</span>
+                    <span>
+                      <span className="compare-impact-resource">{impactChangedName(path)}</span>{" "}
+                      impacts{" "}
+                      <span className="compare-impact-resource">{impactAffectedName(path)}</span>
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -1942,6 +1947,14 @@ function ImpactedView({ comparison }: { comparison: ComparisonResult }) {
       )}
     </section>
   );
+}
+
+function impactChangedName(path: DependencyImpactPath): string {
+  return path.changedResourceName ?? path.resourceNames[0] ?? path.changedResourceId;
+}
+
+function impactAffectedName(path: DependencyImpactPath): string {
+  return path.resourceNames.at(-1) ?? path.resourceIds.at(-1) ?? "Affected resource";
 }
 
 function ResolvedFilesView({ comparison }: { comparison: ComparisonResult }) {

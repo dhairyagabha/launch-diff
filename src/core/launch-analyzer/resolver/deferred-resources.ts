@@ -62,6 +62,7 @@ const CUSTOM_CODE_MODULE_PATHS = new Set([
   "core/src/lib/actions/customCode.js",
   "core/src/lib/dataElements/customCode.js"
 ]);
+const EXTERNAL_CUSTOM_CODE_LANGUAGES = new Set(["javascript", "html"]);
 const UNRESOLVED_EXTERNAL_CUSTOM_CODE_SOURCE =
   "/* LaunchDiff: external custom-code source could not be resolved. */";
 
@@ -410,7 +411,7 @@ function externalCustomCodeSourceUrl(value: unknown): string | undefined {
     !CUSTOM_CODE_MODULE_PATHS.has(modulePath) ||
     settings?.isExternal !== true ||
     !source ||
-    (language !== undefined && language !== "javascript")
+    (language !== undefined && !EXTERNAL_CUSTOM_CODE_LANGUAGES.has(language))
   ) {
     return undefined;
   }
