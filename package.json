@@ -16,7 +16,7 @@
     "verify": "npm run typecheck && npm run lint && npm test"
   },
   "dependencies": {
-    "@babel/parser": "^7.29.8",
+    "@babel/parser": "^8.0.4",
     "@babel/types": "^7.29.8",
     "@primer/react": "latest",
     "next": "latest",
