@@ -23,12 +23,18 @@ export interface GenerateReleaseNotesOptions {
 }
 
 interface ReleaseNoteSections {
-  rules: string[];
-  dataElements: string[];
-  extensions: string[];
-  runtimeAndUnmapped: string[];
+  summary: string[];
+  directChanges: string[];
+  referenceChanges: string[];
   dependencyImpact: string[];
   warnings: string[];
+}
+
+interface StatusCounts {
+  added: number;
+  removed: number;
+  modified: number;
+  unknown: number;
 }
 
 export function generateReleaseNotes(
@@ -36,15 +42,23 @@ export function generateReleaseNotes(
   options: GenerateReleaseNotesOptions = {}
 ): string {
   const sections = buildReleaseNoteSections(comparison, options);
-  const lines = [`# ${options.title ?? "Release Notes"}`];
+  const lines = [`# ${options.title ?? "LaunchDiff Review Summary"}`];
+  const hasReviewEntries =
+    sections.directChanges.length > 0 ||
+    sections.referenceChanges.length > 0 ||
+    sections.dependencyImpact.length > 0 ||
+    sections.warnings.length > 0;
 
-  appendChangesSection(lines, sections);
+  if (!hasReviewEntries) {
+    lines.push("", "No deployed changes, dependency impact, or analysis warnings were detected.");
+    return `${lines.join("\n")}\n`;
+  }
+
+  appendSection(lines, "Summary", sections.summary);
+  appendSection(lines, "Direct Changes", sections.directChanges);
+  appendSection(lines, "Data Element References", sections.referenceChanges);
   appendSection(lines, "Dependency Impact", sections.dependencyImpact);
   appendSection(lines, "Analysis Warnings", sections.warnings);
-
-  if (lines.length === 1) {
-    lines.push("", "No release-note entries were generated from this comparison.");
-  }
 
   return `${lines.join("\n")}\n`;
 }
@@ -53,27 +67,93 @@ function buildReleaseNoteSections(
   comparison: ComparisonResult,
   options: GenerateReleaseNotesOptions
 ): ReleaseNoteSections {
+  const warnings = warningNotes(comparison);
+  const statusCounts = directStatusCounts(comparison.resources);
+  const dependencyImpact = dependencyImpactNotes(
+    comparison.impacts,
+    options.maxImpactedResourcesPerChange ?? 7
+  );
+
   return {
-    ...directChangeSections(comparison.resources),
-    dependencyImpact: dependencyImpactNotes(
-      comparison.impacts,
-      options.maxImpactedResourcesPerChange ?? 7
-    ),
-    warnings: warningNotes(comparison)
+    summary: summaryNotes({
+      statusCounts,
+      impactedResourceCount: impactedResourceCount(comparison.impacts),
+      warningCount: warnings.length
+    }),
+    directChanges: directChangeNotes(comparison.resources),
+    referenceChanges: dataElementReferenceChangeNotes(comparison.resources),
+    dependencyImpact,
+    warnings
   };
 }
 
-function directChangeSections(comparisons: ResourceComparison[]): Omit<
-  ReleaseNoteSections,
-  "dependencyImpact" | "warnings"
-> {
-  const sections = {
-    rules: [] as string[],
-    dataElements: [] as string[],
-    extensions: [] as string[],
-    runtimeAndUnmapped: [] as string[]
-  };
-  const unmappedSummary = {
+function summaryNotes(input: {
+  statusCounts: StatusCounts;
+  impactedResourceCount: number;
+  warningCount: number;
+}): string[] {
+  const directTotal =
+    input.statusCounts.added +
+    input.statusCounts.removed +
+    input.statusCounts.modified +
+    input.statusCounts.unknown;
+  const statusParts = [
+    countPhrase(input.statusCounts.modified, "modified"),
+    countPhrase(input.statusCounts.added, "added"),
+    countPhrase(input.statusCounts.removed, "removed"),
+    countPhrase(input.statusCounts.unknown, "needs review")
+  ].filter((part): part is string => Boolean(part));
+  const notes = [
+    directTotal > 0
+      ? `Direct changes: ${directTotal} (${statusParts.join(", ")}).`
+      : "Direct changes: none."
+  ];
+
+  if (input.impactedResourceCount > 0) {
+    notes.push(
+      `Dependency impact: ${input.impactedResourceCount} ${pluralize(
+        "resource",
+        input.impactedResourceCount
+      )}.`
+    );
+  }
+
+  if (input.warningCount > 0) {
+    notes.push(
+      `Analysis warnings: ${input.warningCount} ${pluralize("warning", input.warningCount)}.`
+    );
+  }
+
+  return notes;
+}
+
+function directStatusCounts(comparisons: ResourceComparison[]): StatusCounts {
+  return comparisons.reduce<StatusCounts>(
+    (counts, comparison) => {
+      if (comparison.status === "added") {
+        counts.added += 1;
+      } else if (comparison.status === "removed") {
+        counts.removed += 1;
+      } else if (comparison.status === "modified") {
+        counts.modified += 1;
+      } else if (comparison.status === "unknown") {
+        counts.unknown += 1;
+      }
+
+      return counts;
+    },
+    {
+      added: 0,
+      removed: 0,
+      modified: 0,
+      unknown: 0
+    }
+  );
+}
+
+function directChangeNotes(comparisons: ResourceComparison[]): string[] {
+  const notes: string[] = [];
+  const unmappedSummary: StatusCounts = {
     added: 0,
     removed: 0,
     modified: 0,
@@ -89,31 +169,25 @@ function directChangeSections(comparisons: ResourceComparison[]): Omit<
 
     if (resource.identity.resourceType === "unmapped") {
       if (comparison.status in unmappedSummary) {
-        unmappedSummary[comparison.status as keyof typeof unmappedSummary] += 1;
+        unmappedSummary[comparison.status as keyof StatusCounts] += 1;
       }
       continue;
     }
 
     const note = directResourceNote(comparison);
 
-    if (!note) {
-      continue;
-    }
-
-    sectionForResourceType(sections, resource.identity.resourceType).push(note);
-
-    for (const referenceNote of dataElementReferenceNotes(comparison)) {
-      sectionForResourceType(sections, resource.identity.resourceType).push(referenceNote);
+    if (note) {
+      notes.push(note);
     }
   }
 
   for (const [status, count] of Object.entries(unmappedSummary)) {
     if (count > 0) {
-      sections.runtimeAndUnmapped.push(unmappedSummaryNote(status, count));
+      notes.push(unmappedSummaryNote(status, count));
     }
   }
 
-  return sections;
+  return notes;
 }
 
 function directResourceNote(comparison: ResourceComparison): string | undefined {
@@ -123,20 +197,19 @@ function directResourceNote(comparison: ResourceComparison): string | undefined 
     return undefined;
   }
 
+  const type = titleResourceTypeLabel(resource.identity.resourceType);
   const name = quotedResourceName(resource);
 
   if (comparison.status === "added") {
-    return `Added ${name} ${resourceTypeLabel(resource.identity.resourceType)}.`;
+    return `${type} ${name} was added.`;
   }
 
   if (comparison.status === "removed") {
-    return `Removed ${name} ${resourceTypeLabel(resource.identity.resourceType)}.`;
+    return `${type} ${name} was removed.`;
   }
 
   if (comparison.status === "unknown") {
-    return `Could not determine whether ${name} ${resourceTypeLabel(
-      resource.identity.resourceType
-    )} was added or removed because a counterpart resource is unresolved.`;
+    return `${type} ${name} needs review ${unknownReason(comparison)}.`;
   }
 
   if (comparison.status !== "modified") {
@@ -146,18 +219,22 @@ function directResourceNote(comparison: ResourceComparison): string | undefined 
   const orderingChanged = comparison.structuredChanges.some((change) => change.kind === "ordering");
 
   if (orderingChanged && resource.identity.resourceType === "rule") {
-    return `Updated execution order in ${name} rule.`;
+    return `${type} ${name} changed execution order.`;
   }
 
   if (resource.identity.resourceType === "extension") {
-    return `Updated configuration for ${name} extension.`;
+    return `${type} ${name} configuration changed.`;
   }
 
   if (resource.identity.resourceType === "runtime") {
-    return "Updated runtime configuration.";
+    return "Runtime configuration changed.";
   }
 
-  return `Updated ${name} ${resourceTypeLabel(resource.identity.resourceType)}.`;
+  return `${type} ${name} changed.`;
+}
+
+function dataElementReferenceChangeNotes(comparisons: ResourceComparison[]): string[] {
+  return sortComparisons(comparisons).flatMap(dataElementReferenceNotes);
 }
 
 function dataElementReferenceNotes(comparison: ResourceComparison): string[] {
@@ -181,38 +258,34 @@ function dataElementReferenceNotes(comparison: ResourceComparison): string[] {
     return [];
   }
 
-  const resourceName = quotedResourceName(comparison.compare);
+  const resourceName = `${titleResourceTypeLabel(comparison.compare.identity.resourceType)} ${
+    quotedResourceName(comparison.compare)
+  }`;
 
   if (removed.length === 1 && added.length === 1) {
     if (sameResolvedTarget.length === 1) {
       return [
-        `Updated Data Element reference text in ${resourceName} from ${quoteName(
+        `${resourceName} changed Data Element reference text from ${quoteName(
           removed[0]!
-        )} to ${quoteName(added[0]!)} while resolving to the same data element.`
+        )} to ${quoteName(added[0]!)} while resolving to the same Data Element.`
       ];
     }
 
     return [
-      `Updated Data Element references in ${resourceName}: now references ${quoteName(
-        added[0]!
-      )} instead of ${quoteName(removed[0]!)}.`
+      `${resourceName} now references ${quoteName(added[0]!)} instead of ${quoteName(
+        removed[0]!
+      )}.`
     ];
   }
 
   const notes: string[] = [];
 
   if (added.length > 0) {
-    notes.push(
-      `Updated Data Element references in ${resourceName}: now references ${formatNameList(added)}.`
-    );
+    notes.push(`${resourceName} now references ${formatNameList(added)}.`);
   }
 
   if (removed.length > 0) {
-    notes.push(
-      `Updated Data Element references in ${resourceName}: no longer references ${formatNameList(
-        removed
-      )}.`
-    );
+    notes.push(`${resourceName} no longer references ${formatNameList(removed)}.`);
   }
 
   return notes;
@@ -231,28 +304,29 @@ function dependencyImpactNotes(
     ]);
   }
 
-  return [...byChangedResource.entries()].flatMap(([changedResourceId, impactPaths]) => {
-    const changedName = impactPaths[0]?.changedResourceName ?? changedResourceId;
-    const impactedResources = unique(
-      impactPaths.map((impact) => impact.resourceNames[0] ?? impact.resourceIds[0]!)
-    );
-    const hiddenCount = Math.max(0, impactedResources.length - maxImpactedResourcesPerChange);
-    const lines = [
-      `${codeName(changedName)} was modified and is referenced directly or indirectly by ${
+  return [...byChangedResource.entries()]
+    .sort(([leftId, leftImpacts], [rightId, rightImpacts]) =>
+      changedResourceDisplayName(leftId, leftImpacts).localeCompare(
+        changedResourceDisplayName(rightId, rightImpacts)
+      )
+    )
+    .map(([changedResourceId, impactPaths]) => {
+      const changedName = changedResourceDisplayName(changedResourceId, impactPaths);
+      const impactedResources = unique(
+        impactPaths
+          .map((impact) => impact.resourceNames[0] ?? impact.resourceIds[0])
+          .filter((name): name is string => Boolean(name))
+      );
+      const impactedSummary = formatNameSummary(
+        impactedResources,
+        maxImpactedResourcesPerChange
+      );
+
+      return `${changedName} impacts ${impactedResources.length} ${pluralize(
+        "resource",
         impactedResources.length
-      } ${pluralize("resource", impactedResources.length)}.`
-    ];
-
-    for (const impactedResource of impactedResources.slice(0, maxImpactedResourcesPerChange)) {
-      lines.push(`  - ${codeName(impactedResource)}`);
-    }
-
-    if (hiddenCount > 0) {
-      lines.push(`  - ${hiddenCount} more ${pluralize("resource", hiddenCount)} not listed.`);
-    }
-
-    return lines;
-  });
+      )}${impactedSummary ? `: ${impactedSummary}` : ""}.`;
+    });
 }
 
 function warningNotes(comparison: ComparisonResult): string[] {
@@ -275,7 +349,7 @@ function completenessWarnings(
 
   if (completeness.failed > 0) {
     warnings.push(
-      `${completeness.failed} of ${completeness.discovered} ${side}-library resources could not be retrieved. Results may not represent every deployed change.`
+      `${side} library: ${completeness.failed} of ${completeness.discovered} resources could not be retrieved. Results may not represent every deployed change.`
     );
   }
 
@@ -291,42 +365,12 @@ function completenessWarnings(
   return warnings;
 }
 
-function appendChangesSection(lines: string[], sections: ReleaseNoteSections): void {
-  const hasChanges =
-    sections.rules.length > 0 ||
-    sections.dataElements.length > 0 ||
-    sections.extensions.length > 0 ||
-    sections.runtimeAndUnmapped.length > 0;
-
-  if (!hasChanges) {
-    return;
-  }
-
-  lines.push("", "## Changes");
-  appendSubsection(lines, "Rules", sections.rules);
-  appendSubsection(lines, "Data Elements", sections.dataElements);
-  appendSubsection(lines, "Extensions", sections.extensions);
-  appendSubsection(lines, "Runtime / Unmapped", sections.runtimeAndUnmapped);
-}
-
 function appendSection(lines: string[], title: string, entries: string[]): void {
   if (entries.length === 0) {
     return;
   }
 
-  lines.push(
-    "",
-    `## ${title}`,
-    ...entries.map((entry) => (entry.startsWith("  - ") ? entry : `- ${entry}`))
-  );
-}
-
-function appendSubsection(lines: string[], title: string, entries: string[]): void {
-  if (entries.length === 0) {
-    return;
-  }
-
-  lines.push("", `### ${title}`, ...entries.map((entry) => `- ${entry}`));
+  lines.push("", `## ${title}`, ...entries.map((entry) => `- ${entry}`));
 }
 
 function sortComparisons(comparisons: ResourceComparison[]): ResourceComparison[] {
@@ -351,54 +395,46 @@ function resourceTypeRank(resourceType: ResourceType | undefined): number {
   return index === -1 ? RESOURCE_TYPE_ORDER.length : index;
 }
 
-function sectionForResourceType(
-  sections: Omit<ReleaseNoteSections, "dependencyImpact" | "warnings">,
-  resourceType: ResourceType
-): string[] {
-  if (resourceType === "rule") {
-    return sections.rules;
+function titleResourceTypeLabel(resourceType: ResourceType): string {
+  if (resourceType === "data-element") {
+    return "Data Element";
   }
 
-  if (resourceType === "data-element") {
-    return sections.dataElements;
+  if (resourceType === "rule") {
+    return "Rule";
   }
 
   if (resourceType === "extension") {
-    return sections.extensions;
+    return "Extension";
   }
 
-  return sections.runtimeAndUnmapped;
-}
-
-function resourceTypeLabel(resourceType: ResourceType): string {
-  if (resourceType === "data-element") {
-    return "data element";
+  if (resourceType === "runtime") {
+    return "Runtime";
   }
 
-  return resourceType;
+  return "Unmapped resource";
 }
 
 function unmappedSummaryNote(status: string, count: number): string {
-  return `${unmappedSummaryVerb(status)} ${count} unmapped ${pluralize(
-    "library resource",
-    count
-  )}. Review the comparison for details.`;
+  return `${count} unmapped ${pluralize("library resource", count)} ${unmappedStatusPhrase(
+    status
+  )}. Review the detailed comparison for the exact file-level changes.`;
 }
 
-function unmappedSummaryVerb(status: string): string {
+function unmappedStatusPhrase(status: string): string {
   if (status === "added") {
-    return "Added";
+    return "were added";
   }
 
   if (status === "removed") {
-    return "Removed";
+    return "were removed";
   }
 
   if (status === "unknown") {
-    return "Could not classify";
+    return "need review";
   }
 
-  return "Modified";
+  return "changed";
 }
 
 function comparableDataElementReferences(
@@ -444,6 +480,46 @@ function isCompletenessComparisonWarning(warning: AnalysisWarning): boolean {
   return /^comparison:(base|compare)-library-/.test(warning.id);
 }
 
+function unknownReason(comparison: ResourceComparison): string {
+  const unresolvedChange = comparison.structuredChanges.find((change) => change.kind === "unresolved");
+
+  if (unresolvedChange?.id.includes("external-custom-code-unresolved")) {
+    return "because external custom-code source content could not be resolved";
+  }
+
+  if (unresolvedChange?.id.includes("unresolved-counterpart")) {
+    return "because unresolved files may hide the counterpart resource";
+  }
+
+  return "because LaunchDiff could not prove the resource state";
+}
+
+function changedResourceDisplayName(
+  changedResourceId: string,
+  impactPaths: DependencyImpactPath[]
+): string {
+  const changedName = impactPaths[0]?.changedResourceName ?? changedResourceId;
+  const resourceType = resourceTypeFromGraphId(changedResourceId);
+
+  return resourceType
+    ? `${titleResourceTypeLabel(resourceType)} ${quoteName(changedName)}`
+    : quoteName(changedName);
+}
+
+function resourceTypeFromGraphId(value: string): ResourceType | undefined {
+  const resourceType = value.split(":")[0];
+
+  return RESOURCE_TYPE_ORDER.includes(resourceType as ResourceType)
+    ? (resourceType as ResourceType)
+    : undefined;
+}
+
+function impactedResourceCount(impacts: DependencyImpactPath[]): number {
+  return unique(
+    impacts.map((impact) => impact.resourceIds[0]).filter((id): id is string => Boolean(id))
+  ).length;
+}
+
 function quotedResourceName(resource: LaunchResource): string {
   return quoteName(displayName(resource));
 }
@@ -460,16 +536,28 @@ function formatNameList(names: string[]): string {
   return names.map(quoteName).join(", ");
 }
 
+function formatNameSummary(names: string[], maxNames: number): string {
+  const visibleNames = names.slice(0, maxNames);
+  const hiddenCount = Math.max(0, names.length - visibleNames.length);
+  const formattedNames = visibleNames.map(quoteName);
+
+  if (hiddenCount === 0) {
+    return formattedNames.join(", ");
+  }
+
+  return `${formattedNames.join(", ")} and ${hiddenCount} more`;
+}
+
 function quoteName(value: string): string {
   return `"${value.replaceAll("\"", "\\\"")}"`;
 }
 
-function codeName(value: string): string {
-  return `\`${value.replaceAll("`", "\\`")}\``;
-}
-
 function unique(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+function countPhrase(count: number, label: string): string | undefined {
+  return count > 0 ? `${count} ${label}` : undefined;
 }
 
 function pluralize(noun: string, count: number): string {

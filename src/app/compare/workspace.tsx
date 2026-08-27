@@ -35,6 +35,7 @@ import {
   type ChangeEvent,
   type Dispatch,
   type FormEvent,
+  type ReactNode,
   type RefObject,
   type SetStateAction
 } from "react";
@@ -123,6 +124,25 @@ const PHASE_LABELS: Record<BrowserAnalysisProgress["phase"], string> = {
   complete: "Complete"
 };
 
+const SAMPLE_CONFIG: LaunchDiffConfig = {
+  version: 1,
+  sites: [
+    {
+      name: "Example Site",
+      environments: [
+        {
+          name: "Production",
+          url: "https://assets.example.test/property/production/launch.js"
+        },
+        {
+          name: "Staging",
+          url: "https://assets.example.test/property/staging/launch-development.js"
+        }
+      ]
+    }
+  ]
+};
+
 function createWorkerClient(): AnalyzerWorkerClient {
   return new AnalyzerWorkerClient(
     new Worker(new URL("../../workers/analyzer.worker.ts", import.meta.url), {
@@ -203,17 +223,6 @@ export function CompareWorkspace() {
     [comparison, selectedResourceKey, visibleGroups]
   );
   const selectedDiff = selectedComparison?.detailedDiff;
-  const downloadableConfig = useMemo(
-    () =>
-      buildDownloadableConfig({
-        setupMode,
-        baseUrl,
-        compareUrl,
-        config
-      }),
-    [baseUrl, compareUrl, config, setupMode]
-  );
-
   useEffect(() => {
     queueMicrotask(() => {
       try {
@@ -556,14 +565,10 @@ export function CompareWorkspace() {
     });
   }
 
-  function downloadConfig() {
-    if (!downloadableConfig) {
-      return;
-    }
-
+  function downloadSampleConfig() {
     downloadTextFile({
-      content: `${JSON.stringify(downloadableConfig, null, 2)}\n`,
-      filename: "launchdiff.config.json",
+      content: `${JSON.stringify(SAMPLE_CONFIG, null, 2)}\n`,
+      filename: "launchdiff.sample.config.json",
       type: "application/json;charset=utf-8"
     });
   }
@@ -609,8 +614,7 @@ export function CompareWorkspace() {
             setBaseEnvironmentName={setBaseEnvironmentName}
             setCompareEnvironmentName={setCompareEnvironmentName}
             onConfigFile={handleConfigFile}
-            canDownloadConfig={Boolean(downloadableConfig)}
-            onDownloadConfig={downloadConfig}
+            onDownloadSampleConfig={downloadSampleConfig}
             onSubmit={handleSubmit}
             onSwap={() => {
               if (setupMode === "config") {
@@ -640,8 +644,6 @@ export function CompareWorkspace() {
               onCancel={cancelAnalysis}
               diagnosticCopyState={diagnosticCopyState}
               onCopyDiagnostics={() => void copyDiagnosticReport()}
-              canDownloadConfig={Boolean(downloadableConfig)}
-              onDownloadConfig={downloadConfig}
             />
             {error && <InlineBanner tone="danger" title="Analysis failed" description={error} />}
             {banner && (
@@ -741,8 +743,7 @@ function SetupPanel(props: {
   setBaseEnvironmentName: (value: string) => void;
   setCompareEnvironmentName: (value: string) => void;
   onConfigFile: (event: ChangeEvent<HTMLInputElement>) => void;
-  canDownloadConfig: boolean;
-  onDownloadConfig: () => void;
+  onDownloadSampleConfig: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onSwap: () => void;
   error?: string;
@@ -908,13 +909,12 @@ function SetupPanel(props: {
           <button
             className="compare-button"
             type="button"
-            aria-label="Download config"
-            title="Download config"
-            disabled={!props.canDownloadConfig}
-            onClick={props.onDownloadConfig}
+            aria-label="Download sample config"
+            title="Download sample config"
+            onClick={props.onDownloadSampleConfig}
           >
             <DownloadIcon size={16} />
-            Config
+            Sample
           </button>
           <button className="compare-primary-button" type="submit" aria-label="Compare libraries">
             <FileCodeIcon size={16} />
@@ -939,8 +939,6 @@ function WorkspaceHeader(props: {
   onCancel: () => void;
   diagnosticCopyState: "idle" | "copied" | "failed";
   onCopyDiagnostics: () => void;
-  canDownloadConfig: boolean;
-  onDownloadConfig: () => void;
 }) {
   return (
     <header className="compare-header">
@@ -1003,17 +1001,6 @@ function WorkspaceHeader(props: {
             <button
               className="compare-button"
               type="button"
-              aria-label="Download config"
-              title="Download config"
-              disabled={!props.canDownloadConfig}
-              onClick={props.onDownloadConfig}
-            >
-              <DownloadIcon size={14} />
-              Config
-            </button>
-            <button
-              className="compare-button"
-              type="button"
               aria-label={diagnosticButtonLabel(props.diagnosticCopyState)}
               title="Copy sanitized diagnostic report"
               onClick={props.onCopyDiagnostics}
@@ -1054,7 +1041,7 @@ function ThemeModeControl() {
         aria-pressed={mode === "day" || mode === "light"}
         className={mode === "day" || mode === "light" ? "is-selected" : undefined}
         title="Use light theme"
-        onClick={() => setColorMode("day")}
+        onClick={() => setColorMode("light")}
       >
         <SunIcon size={14} />
       </button>
@@ -1064,7 +1051,7 @@ function ThemeModeControl() {
         aria-pressed={mode === "night" || mode === "dark"}
         className={mode === "night" || mode === "dark" ? "is-selected" : undefined}
         title="Use dark theme"
-        onClick={() => setColorMode("night")}
+        onClick={() => setColorMode("dark")}
       >
         <MoonIcon size={14} />
       </button>
@@ -1610,12 +1597,12 @@ function DiffSupplement(props: {
     <section className="compare-diff-supplement" aria-label="Resource review details">
       {props.comparison.structuredChanges.length > 0 && (
         <details className="compare-structured-changes">
-          <summary>Structured changes ({props.comparison.structuredChanges.length})</summary>
+          <summary>Change summary ({props.comparison.structuredChanges.length})</summary>
           <ul>
             {props.comparison.structuredChanges.map((change) => (
               <li key={change.id}>
-                <strong>{change.kind}</strong>
-                <span>{change.path.join(".") || "resource"}</span>
+                <strong>{structuredChangeTitle(change.kind)}</strong>
+                {change.path.length > 0 && <span>{structuredChangePath(change.path)}</span>}
                 <p>{change.description}</p>
               </li>
             ))}
@@ -2069,33 +2056,56 @@ function ReleaseNotesView(props: {
 }
 
 function MarkdownPreview({ markdown }: { markdown: string }) {
-  const blocks = markdown.split(/\n{2,}/);
+  const lines = markdown.trimEnd().split("\n");
+  const elements: ReactNode[] = [];
+  let pendingList: string[] = [];
 
-  return (
-    <div className="compare-release-preview">
-      {blocks.map((block, index) => {
-        if (block.startsWith("## ")) {
-          return <h3 key={index}>{block.slice(3)}</h3>;
-        }
+  function flushList() {
+    if (pendingList.length === 0) {
+      return;
+    }
 
-        if (block.startsWith("# ")) {
-          return <h2 key={index}>{block.slice(2)}</h2>;
-        }
+    const items = pendingList;
+    pendingList = [];
+    elements.push(
+      <ul key={`list:${elements.length}`}>
+        {items.map((item, index) => (
+          <li key={`${index}:${item}`}>{item}</li>
+        ))}
+      </ul>
+    );
+  }
 
-        if (block.startsWith("- ")) {
-          return (
-            <ul key={index}>
-              {block.split("\n").map((line) => (
-                <li key={line}>{line.replace(/^- /, "")}</li>
-              ))}
-            </ul>
-          );
-        }
+  for (const line of lines) {
+    if (!line.trim()) {
+      flushList();
+      continue;
+    }
 
-        return <p key={index}>{block}</p>;
-      })}
-    </div>
-  );
+    if (line.startsWith("# ")) {
+      flushList();
+      elements.push(<h2 key={`h2:${elements.length}`}>{line.slice(2)}</h2>);
+      continue;
+    }
+
+    if (line.startsWith("## ")) {
+      flushList();
+      elements.push(<h3 key={`h3:${elements.length}`}>{line.slice(3)}</h3>);
+      continue;
+    }
+
+    if (line.startsWith("- ")) {
+      pendingList.push(line.slice(2));
+      continue;
+    }
+
+    flushList();
+    elements.push(<p key={`p:${elements.length}`}>{line}</p>);
+  }
+
+  flushList();
+
+  return <div className="compare-release-preview">{elements}</div>;
 }
 
 function KeyboardHelpDialog({ onClose }: { onClose: () => void }) {
@@ -2238,6 +2248,51 @@ function compactStatusLabel(status: ResourceComparison["status"]): string {
   return statusLabel(status);
 }
 
+function structuredChangeTitle(
+  kind: ResourceComparison["structuredChanges"][number]["kind"]
+): string {
+  if (kind === "resource-added") {
+    return "Resource added";
+  }
+
+  if (kind === "resource-removed") {
+    return "Resource removed";
+  }
+
+  if (kind === "content-modified") {
+    return "Content changed";
+  }
+
+  if (kind === "metadata") {
+    return "Metadata changed";
+  }
+
+  if (kind === "ordering") {
+    return "Execution order changed";
+  }
+
+  if (kind === "dependency-impact") {
+    return "Dependency impact";
+  }
+
+  return "Needs review";
+}
+
+function structuredChangePath(path: string[]): string {
+  return path.map(humanizePathSegment).join(" / ");
+}
+
+function humanizePathSegment(segment: string): string {
+  if (/^\d+$/.test(segment)) {
+    return `#${Number(segment) + 1}`;
+  }
+
+  return segment
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function splitDisplaySource(source: string | undefined): string[] {
   if (!source) {
     return [];
@@ -2313,43 +2368,6 @@ function applyDefaultConfigSelection(
   setters.setCompareEnvironmentName(
     site?.environments[1]?.name ?? site?.environments[0]?.name ?? ""
   );
-}
-
-function buildDownloadableConfig(input: {
-  setupMode: SetupMode;
-  baseUrl: string;
-  compareUrl: string;
-  config?: LaunchDiffConfig;
-}): LaunchDiffConfig | undefined {
-  if (input.setupMode === "config") {
-    return input.config;
-  }
-
-  const base = normalizeAnalysisUrl(input.baseUrl);
-  const compare = normalizeAnalysisUrl(input.compareUrl);
-
-  if (!base.ok || !compare.ok) {
-    return undefined;
-  }
-
-  return parseLaunchDiffConfig({
-    version: 1,
-    sites: [
-      {
-        name: "Current comparison",
-        environments: [
-          {
-            name: "Base",
-            url: base.url
-          },
-          {
-            name: "Compare",
-            url: compare.url
-          }
-        ]
-      }
-    ]
-  });
 }
 
 function pickInitialResource(comparison: ComparisonResult): ResourceComparison | undefined {

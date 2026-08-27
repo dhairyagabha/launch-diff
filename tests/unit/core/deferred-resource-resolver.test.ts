@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  compareResolvedLibraries,
   discoverDeferredLaunchResources,
   parseCurrentLaunchLibrary,
   resolveDeferredLaunchResources,
@@ -106,6 +107,69 @@ describe("deferred Launch resource resolver", () => {
     });
     expect(rule?.normalizedSource).toContain("function checkout(){return");
     expect(rule?.fileIds).toEqual(["canonical", "deferred:1"]);
+  });
+
+  it("compares external custom-code sources by fetched content rather than URL text", async () => {
+    const baseSourceUrl = "https://assets.example.test/rules/source-a.js";
+    const compareSourceUrl = "https://assets.example.test/rules/source-b.js";
+    const fetcher = new StaticFetcher({
+      [baseSourceUrl]: `function sharedExternalCode(){return true;}`,
+      [compareSourceUrl]: `function sharedExternalCode(){return true;}`
+    });
+    const base = await resolveDeferredLaunchResources({
+      library: externalCustomCodeLibrary(baseSourceUrl, "https://assets.example.test/base.js"),
+      fetcher
+    });
+    const compare = await resolveDeferredLaunchResources({
+      library: externalCustomCodeLibrary(compareSourceUrl, "https://assets.example.test/compare.js"),
+      fetcher
+    });
+    const result = compareResolvedLibraries(base.library, compare.library);
+
+    expect(result.ok).toBe(true);
+    expect(
+      result.ok
+        ? result.comparison.resources.find(
+            (comparison) => comparison.compare?.identity.name === "External Source Rule"
+          )?.status
+        : undefined
+    ).toBe("unchanged");
+  });
+
+  it("records unresolved external custom-code sources on the owning resource", async () => {
+    const sourceUrl = "https://assets.example.test/rules/missing-source.js";
+    const source = `_satellite._container={
+      buildInfo:{turbineVersion:"29.0.0",turbineBuildDate:"2026-06-01T00:00:00Z",buildDate:"2026-06-13T01:22:12Z",minified:true},
+      company:{orgId:"ABCDEF1234567890ABCDEF12@AdobeOrg",dynamicCdnEnabled:true},
+      property:{name:"Property",id:"PR12345678901234567890123456789012",settings:{undefinedVarsReturnEmpty:false,domains:["example.test"],ruleComponentSequencingEnabled:true}},
+      environment:{id:"EN12345678901234567890123456789012",stage:"development"},
+      dataElements:{},
+      extensions:{},
+      rules:[{id:"RL12345678901234567890123456789012",name:"Missing External Source Rule",events:[],conditions:[],actions:[{
+        modulePath:"core/src/lib/actions/customCode.js",
+        settings:{source:${JSON.stringify(sourceUrl)},language:"javascript",isExternal:true},
+        timeout:2000,
+        delayNext:true
+      }]}]
+    };`;
+    const library = parseCurrentLaunchLibrary({
+      source,
+      canonicalUrl: "https://assets.example.test/launch/current.min.js"
+    });
+    const result = await resolveDeferredLaunchResources({
+      library,
+      fetcher: new StaticFetcher({})
+    });
+    const rule = result.library.resources.find(
+      (resource) => resource.identity.name === "Missing External Source Rule"
+    );
+    const rawRule = rule?.raw as { actions: Array<{ settings: { source: string } }> };
+
+    expect(result.library.files.find((file) => file.id === "deferred:1")?.state).toBe("failed");
+    expect(rawRule.actions[0]?.settings.source).not.toBe(sourceUrl);
+    expect(rule?.metadata.unresolvedExternalCustomCodeSources).toEqual([
+      "actions.0.settings.source"
+    ]);
   });
 
   it("keeps a known failed state for parser-confirmed deferred resources that cannot be loaded", async () => {
@@ -218,6 +282,26 @@ function parseDeferredFixture() {
     manifest,
     library
   };
+}
+
+function externalCustomCodeLibrary(sourceUrl: string, canonicalUrl: string) {
+  return parseCurrentLaunchLibrary({
+    source: `_satellite._container={
+      buildInfo:{turbineVersion:"29.0.0",turbineBuildDate:"2026-06-01T00:00:00Z",buildDate:"2026-06-13T01:22:12Z",minified:true},
+      company:{orgId:"ABCDEF1234567890ABCDEF12@AdobeOrg",dynamicCdnEnabled:true},
+      property:{name:"Property",id:"PR12345678901234567890123456789012",settings:{undefinedVarsReturnEmpty:false,domains:["example.test"],ruleComponentSequencingEnabled:true}},
+      environment:{id:"EN12345678901234567890123456789012",stage:"development"},
+      dataElements:{},
+      extensions:{},
+      rules:[{id:"RL12345678901234567890123456789012",name:"External Source Rule",events:[],conditions:[],actions:[{
+        modulePath:"core/src/lib/actions/customCode.js",
+        settings:{source:${JSON.stringify(sourceUrl)},language:"javascript",isExternal:true},
+        timeout:2000,
+        delayNext:true
+      }]}]
+    };`,
+    canonicalUrl
+  });
 }
 
 function totalOwners(references: Array<{ owners: unknown[] }>): number {

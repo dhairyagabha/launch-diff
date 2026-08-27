@@ -54,12 +54,15 @@ interface ResolvedExternalCustomCodeSource {
   reference: DeferredLaunchResourceReference;
   fileId: string;
   source: string;
+  unresolved: boolean;
 }
 
 const CUSTOM_CODE_MODULE_PATHS = new Set([
   "core/src/lib/actions/customCode.js",
   "core/src/lib/dataElements/customCode.js"
 ]);
+const UNRESOLVED_EXTERNAL_CUSTOM_CODE_SOURCE =
+  "/* LaunchDiff: external custom-code source could not be resolved. */";
 
 export function discoverDeferredLaunchResources(
   library: ResolvedLibrary
@@ -146,11 +149,14 @@ export async function resolveDeferredLaunchResources(
 
     deferredFiles.push(resolvedFile);
 
-    if (result.ok && result.body.kind === "text" && hasExternalCustomCodeTarget(reference)) {
+    if (hasExternalCustomCodeTarget(reference)) {
+      const resolvedText = result.ok && result.body.kind === "text" ? result.body.text : undefined;
+
       externalCustomCodeSources.push({
         reference,
         fileId: resolvedFile.id,
-        source: result.body.text
+        source: resolvedText ?? UNRESOLVED_EXTERNAL_CUSTOM_CODE_SOURCE,
+        unresolved: resolvedText === undefined
       });
     }
 
@@ -540,6 +546,9 @@ function attachResolvedExternalCustomCodeSources(
     const fileIds = [
       ...new Set([...resource.fileIds, ...resourceSources.map((source) => source.fileId)])
     ];
+    const unresolvedSourcePaths = resourceSources
+      .filter((source) => source.unresolved)
+      .map((source) => source.target.sourcePath.join("."));
 
     return {
       ...resource,
@@ -548,7 +557,13 @@ function attachResolvedExternalCustomCodeSources(
       normalizedSource: JSON.stringify(raw),
       contentFingerprint: fingerprintUnknown(raw),
       children,
-      fileIds
+      fileIds,
+      metadata: {
+        ...resource.metadata,
+        ...(unresolvedSourcePaths.length > 0
+          ? { unresolvedExternalCustomCodeSources: unresolvedSourcePaths }
+          : {})
+      }
     };
   });
 }

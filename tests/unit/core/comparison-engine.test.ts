@@ -134,6 +134,40 @@ describe("comparison engine", () => {
     expect(statuses).toEqual(["added", "removed"]);
   });
 
+  it("marks unresolved external custom-code sources as unknown instead of a proven content change", () => {
+    const baseRule = rule("External Rule", "old-url", {
+      actions: [
+        {
+          settings: {
+            source: "/* LaunchDiff: external custom-code source could not be resolved. */",
+            isExternal: true
+          }
+        }
+      ]
+    });
+    const compareRule = rule("External Rule", "fetched-content", {
+      actions: [
+        {
+          settings: {
+            source: "function actualExternalCode() {}",
+            isExternal: true
+          }
+        }
+      ]
+    });
+    baseRule.metadata.unresolvedExternalCustomCodeSources = ["actions.0.settings.source"];
+    const result = compareResolvedLibraries(
+      library({ resources: [baseRule] }),
+      library({ resources: [compareRule] })
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.ok ? result.comparison.resources[0]?.status : undefined).toBe("unknown");
+    expect(
+      result.ok ? result.comparison.resources[0]?.structuredChanges.map((change) => change.kind) : []
+    ).toEqual(["unresolved"]);
+  });
+
   it("attaches dependency impact to unchanged dependent resources", () => {
     const base = library({
       resources: [
@@ -165,6 +199,60 @@ describe("comparison engine", () => {
           direct: true
         }
       ]
+    });
+  });
+
+  it("attaches dependency impact when a referenced Data Element is added", () => {
+    const base = library({
+      resources: [
+        rule("Rule A", "same", { settings: { source: `_satellite.getVar("New DE");` } })
+      ]
+    });
+    const compare = library({
+      resources: [
+        rule("Rule A", "same", { settings: { source: `_satellite.getVar("New DE");` } }),
+        dataElement("New DE", "added")
+      ]
+    });
+    const result = compareResolvedLibraries(base, compare);
+    const ruleComparison = result.ok
+      ? result.comparison.resources.find(
+          (comparison) => comparison.compare?.identity.name === "Rule A"
+        )
+      : undefined;
+
+    expect(result.ok).toBe(true);
+    expect(ruleComparison?.status).toBe("unchanged");
+    expect(ruleComparison?.impact?.paths[0]).toMatchObject({
+      changedResourceId: "data-element:New DE",
+      direct: true
+    });
+  });
+
+  it("attaches dependency impact from the base graph when a referenced Data Element is removed", () => {
+    const base = library({
+      resources: [
+        rule("Rule A", "same", { settings: { source: `_satellite.getVar("Removed DE");` } }),
+        dataElement("Removed DE", "removed")
+      ]
+    });
+    const compare = library({
+      resources: [
+        rule("Rule A", "same", { settings: { source: `_satellite.getVar("Removed DE");` } })
+      ]
+    });
+    const result = compareResolvedLibraries(base, compare);
+    const ruleComparison = result.ok
+      ? result.comparison.resources.find(
+          (comparison) => comparison.compare?.identity.name === "Rule A"
+        )
+      : undefined;
+
+    expect(result.ok).toBe(true);
+    expect(ruleComparison?.status).toBe("unchanged");
+    expect(ruleComparison?.impact?.paths[0]).toMatchObject({
+      changedResourceId: "data-element:Removed DE",
+      direct: true
     });
   });
 });

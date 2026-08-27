@@ -85,7 +85,7 @@ describe("browser analysis orchestrator", () => {
 
     expect(transport.startCalls).toBe(2);
     expect(refreshed.reusedCache).toEqual({ base: false, compare: false });
-    expect(refreshed.comparison.releaseNotes).toContain('Updated "Smoke Rule" rule.');
+    expect(refreshed.comparison.releaseNotes).toContain('Rule "Smoke Rule" changed.');
   });
 
   it("reports real progress counts and prioritizes selected detailed diffs", async () => {

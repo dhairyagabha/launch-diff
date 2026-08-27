@@ -3,7 +3,8 @@ import {
   annotateDataElementReferences,
   buildDataElementDependencyGraph,
   calculateDependencyImpacts,
-  resourceGraphId
+  resourceGraphId,
+  type DependencyImpactAnalysis
 } from "../dependencies/data-elements";
 import { enqueueDetailedDiffs } from "../diff/detailed-diff";
 import { matchLaunchResources } from "../matcher/resources";
@@ -97,13 +98,15 @@ export function compareResolvedLibraries(
     baseHasUnresolvedFiles: hasUnresolvedFiles(base),
     compareHasUnresolvedFiles: hasUnresolvedFiles(compare)
   });
-  const changedCompareResourceIds = new Set(
-    comparisons
-      .filter((comparison) => comparison.status === "modified" && comparison.compare)
-      .map((comparison) => resourceGraphId(comparison.compare!))
+  const baseDependencyGraph = buildDataElementDependencyGraph(baseResources);
+  const compareDependencyGraph = buildDataElementDependencyGraph(compareResources);
+  const impactAnalysis = mergeDependencyImpactAnalyses(
+    calculateDependencyImpacts(
+      compareDependencyGraph,
+      changedDataElementIds(comparisons, "compare")
+    ),
+    calculateDependencyImpacts(baseDependencyGraph, changedDataElementIds(comparisons, "base"))
   );
-  const dependencyGraph = buildDataElementDependencyGraph(compareResources);
-  const impactAnalysis = calculateDependencyImpacts(dependencyGraph, changedCompareResourceIds);
   const comparisonsWithImpact = enqueueDetailedDiffs(
     comparisons.map((comparison) => attachImpact(comparison, impactAnalysis.impactsByResourceId))
   );
@@ -112,12 +115,13 @@ export function compareResolvedLibraries(
     modelVersion: ANALYZER_MODEL_VERSION,
     base: {
       ...base,
-      resources: baseResources
+      resources: baseResources,
+      dependencyGraph: baseDependencyGraph
     },
     compare: {
       ...compare,
       resources: compareResources,
-      dependencyGraph
+      dependencyGraph: compareDependencyGraph
     },
     resources: comparisonsWithImpact,
     impacts: impactAnalysis.impacts,
@@ -157,11 +161,82 @@ function applyComparisonSemantics(
     }
 
     if (comparison.base && comparison.compare) {
-      return addMatchedResourceStructuredChanges(comparison);
+      const matchedComparison = addMatchedResourceStructuredChanges(comparison);
+
+      if (
+        matchedComparison.status === "modified" &&
+        matchedResourceHasUnresolvedExternalCustomCode(matchedComparison)
+      ) {
+        return unknownBecauseExternalCustomCodeSourceIsUnresolved(matchedComparison);
+      }
+
+      return matchedComparison;
     }
 
     return comparison;
   });
+}
+
+function changedDataElementIds(
+  comparisons: ResourceComparison[],
+  side: "base" | "compare"
+): Set<string> {
+  const ids = new Set<string>();
+
+  for (const comparison of comparisons) {
+    const resource = side === "base" ? comparison.base : comparison.compare;
+
+    if (!resource || resource.identity.resourceType !== "data-element") {
+      continue;
+    }
+
+    if (
+      comparison.status === "modified" ||
+      comparison.status === "unknown" ||
+      (side === "base" && comparison.status === "removed") ||
+      (side === "compare" && comparison.status === "added")
+    ) {
+      ids.add(resourceGraphId(resource));
+    }
+  }
+
+  return ids;
+}
+
+function mergeDependencyImpactAnalyses(
+  ...analyses: DependencyImpactAnalysis[]
+): DependencyImpactAnalysis {
+  const impactsByKey = new Map<string, DependencyImpactPath>();
+  const impactsByResourceId = new Map<string, DependencyImpactPath[]>();
+
+  for (const analysis of analyses) {
+    for (const impact of analysis.impacts) {
+      const key = JSON.stringify({
+        changedResourceId: impact.changedResourceId,
+        resourceIds: impact.resourceIds
+      });
+
+      if (impactsByKey.has(key)) {
+        continue;
+      }
+
+      impactsByKey.set(key, impact);
+
+      const impactedResourceId = impact.resourceIds[0];
+
+      if (impactedResourceId) {
+        impactsByResourceId.set(impactedResourceId, [
+          ...(impactsByResourceId.get(impactedResourceId) ?? []),
+          impact
+        ]);
+      }
+    }
+  }
+
+  return {
+    impacts: [...impactsByKey.values()],
+    impactsByResourceId
+  };
 }
 
 function applyFileLevelFallback(comparisons: ResourceComparison[]): ResourceComparison[] {
@@ -266,6 +341,27 @@ function unknownBecauseCounterpartMayBeMissing(
   };
 }
 
+function unknownBecauseExternalCustomCodeSourceIsUnresolved(
+  comparison: ResourceComparison
+): ResourceComparison {
+  const resource = comparison.compare ?? comparison.base;
+
+  return {
+    ...comparison,
+    status: "unknown",
+    structuredChanges: [
+      ...comparison.structuredChanges.filter((change) => change.kind !== "content-modified"),
+      {
+        id: `${resource ? resourceGraphId(resource) : "resource"}:external-custom-code-unresolved`,
+        kind: "unresolved",
+        path: ["settings", "source"],
+        description:
+          "External custom-code source content could not be resolved on at least one side, so LaunchDiff cannot prove whether the deployed code changed."
+      }
+    ]
+  };
+}
+
 function createFileLevelFallbackComparison(
   base: LaunchResource,
   compare: LaunchResource,
@@ -303,13 +399,13 @@ function attachImpact(
   comparison: ResourceComparison,
   impactsByResourceId: Map<string, DependencyImpactPath[]>
 ): ResourceComparison {
-  const compareResource = comparison.compare;
+  const resource = comparison.compare ?? comparison.base;
 
-  if (!compareResource) {
+  if (!resource) {
     return comparison;
   }
 
-  const paths = impactsByResourceId.get(resourceGraphId(compareResource)) ?? [];
+  const paths = impactsByResourceId.get(resourceGraphId(resource)) ?? [];
 
   if (paths.length === 0) {
     return comparison;
@@ -322,6 +418,19 @@ function attachImpact(
       paths
     }
   };
+}
+
+function matchedResourceHasUnresolvedExternalCustomCode(comparison: ResourceComparison): boolean {
+  return (
+    hasUnresolvedExternalCustomCode(comparison.base) ||
+    hasUnresolvedExternalCustomCode(comparison.compare)
+  );
+}
+
+function hasUnresolvedExternalCustomCode(resource: LaunchResource | undefined): boolean {
+  const value = resource?.metadata.unresolvedExternalCustomCodeSources;
+
+  return Array.isArray(value) && value.some((entry) => typeof entry === "string");
 }
 
 function meaningfulChildOrderChanged(base: LaunchResource, compare: LaunchResource): boolean {

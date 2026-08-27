@@ -26,14 +26,15 @@ describe("deterministic release notes", () => {
     );
 
     expect(result.ok ? result.comparison.releaseNotes : "").toMatchInlineSnapshot(`
-      "# Release Notes
+      "# LaunchDiff Review Summary
 
-      ## Changes
+      ## Summary
+      - Direct changes: 3 (1 modified, 1 added, 1 removed).
 
-      ### Rules
-      - Updated "Checkout" rule.
-      - Removed "Legacy" rule.
-      - Added "Search" rule.
+      ## Direct Changes
+      - Rule "Checkout" changed.
+      - Rule "Legacy" was removed.
+      - Rule "Search" was added.
       "
     `);
   });
@@ -63,7 +64,7 @@ describe("deterministic release notes", () => {
     );
 
     expect(result.ok ? result.comparison.releaseNotes : "").toContain(
-      '- Updated Data Element references in "Global - Page View": now references "Customer ID" instead of "Legacy Customer ID".'
+      'Rule "Global - Page View" now references "Customer ID" instead of "Legacy Customer ID".'
     );
     expect(result.ok ? result.comparison.releaseNotes : "").not.toContain("purchase");
   });
@@ -93,7 +94,7 @@ describe("deterministic release notes", () => {
     );
 
     expect(result.ok ? result.comparison.releaseNotes : "").toContain(
-      '- Updated Data Element reference text in "Global - Page View" from "Legacy Customer ID" to "Customer ID" while resolving to the same data element.'
+      'Rule "Global - Page View" changed Data Element reference text from "Legacy Customer ID" to "Customer ID" while resolving to the same Data Element.'
     );
   });
 
@@ -122,16 +123,17 @@ describe("deterministic release notes", () => {
     );
 
     expect(result.ok ? result.comparison.releaseNotes : "").toMatchInlineSnapshot(`
-      "# Release Notes
+      "# LaunchDiff Review Summary
 
-      ## Changes
+      ## Summary
+      - Direct changes: 1 (1 modified).
+      - Dependency impact: 1 resource.
 
-      ### Data Elements
-      - Updated "Changed DE" data element.
+      ## Direct Changes
+      - Data Element "Changed DE" changed.
 
       ## Dependency Impact
-      - \`Changed DE\` was modified and is referenced directly or indirectly by 1 resource.
-        - \`Rule A\`
+      - Data Element "Changed DE" impacts 1 resource: "Rule A".
       "
     `);
   });
@@ -156,10 +158,14 @@ describe("deterministic release notes", () => {
     );
 
     expect(result.ok ? result.comparison.releaseNotes : "").toMatchInlineSnapshot(`
-      "# Release Notes
+      "# LaunchDiff Review Summary
+
+      ## Summary
+      - Direct changes: none.
+      - Analysis warnings: 2 warnings.
 
       ## Analysis Warnings
-      - 1 of 2 Compare-library resources could not be retrieved. Results may not represent every deployed change.
+      - Compare library: 1 of 2 resources could not be retrieved. Results may not represent every deployed change.
       - Comparison is incomplete and retry is recommended before relying on these release notes.
       "
     `);
@@ -174,7 +180,7 @@ describe("deterministic release notes", () => {
     );
 
     expect(result.ok ? generateReleaseNotes(result.comparison) : "").toBe(
-      "# Release Notes\n\nNo release-note entries were generated from this comparison.\n"
+      "# LaunchDiff Review Summary\n\nNo deployed changes, dependency impact, or analysis warnings were detected.\n"
     );
   });
 });

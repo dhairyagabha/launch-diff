@@ -58,15 +58,15 @@ test.describe("comparison workspace acceptance", () => {
     await expect(page.getByLabel("Base environment")).toHaveValue("Production");
     await expect(page.getByLabel("Compare environment")).toHaveValue("Staging");
 
-    const configDownloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download config" }).click();
-    const configDownload = await configDownloadPromise;
-    const configDownloadPath = await configDownload.path();
-    const downloadedConfig = JSON.parse(await readFile(configDownloadPath!, "utf8")) as {
+    const sampleConfigDownloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download sample config" }).click();
+    const sampleConfigDownload = await sampleConfigDownloadPromise;
+    const sampleConfigDownloadPath = await sampleConfigDownload.path();
+    const downloadedConfig = JSON.parse(await readFile(sampleConfigDownloadPath!, "utf8")) as {
       sites: Array<{ name: string }>;
     };
 
-    expect(configDownload.suggestedFilename()).toBe("launchdiff.config.json");
+    expect(sampleConfigDownload.suggestedFilename()).toBe("launchdiff.sample.config.json");
     expect(downloadedConfig.sites[0]?.name).toBe("Example Site");
 
     await page.getByRole("button", { name: "Compare libraries" }).click();
@@ -142,7 +142,7 @@ test.describe("comparison workspace acceptance", () => {
     expect(diagnosticReport).not.toContain("Marketing Source");
     expect(diagnosticReport).not.toContain("RL-CHECKOUT");
     expect(diagnosticReport).not.toContain("RL-SIGNUP");
-    expect(diagnosticReport).not.toContain("# LaunchDiff Release Notes");
+    expect(diagnosticReport).not.toContain("# LaunchDiff Review Summary");
 
     await page.getByRole("button", { name: /Signup Rule/ }).click();
     await expect(page.getByRole("heading", { name: "Signup Rule" })).toBeVisible();
@@ -176,7 +176,7 @@ test.describe("comparison workspace acceptance", () => {
       animations: "disabled"
     });
     await page.getByRole("tab", { name: "Raw" }).click();
-    await expect(page.getByText("# LaunchDiff Release Notes")).toBeVisible();
+    await expect(page.getByText("# LaunchDiff Review Summary")).toBeVisible();
     await page.getByRole("button", { name: "Copy" }).click();
     await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
     const downloadPromise = page.waitForEvent("download");
@@ -527,19 +527,23 @@ function fixtureComparison(): ComparisonResult {
       }
     ],
     releaseNotes: [
-      "# LaunchDiff Release Notes",
+      "# LaunchDiff Review Summary",
       "",
-      "## Modified",
+      "## Summary",
       "",
-      "- Checkout Tracking Rule changed deployed custom code.",
+      "- Direct changes: 3 (1 modified, 1 added, 1 removed).",
+      "- Dependency impact: 1 resource.",
+      "- Analysis warnings: 1 warning.",
       "",
-      "## Added",
+      "## Direct Changes",
       "",
+      "- Rule \"Checkout Tracking Rule\" changed.",
       "- Signup Rule was added.",
-      "",
-      "## Removed",
-      "",
       "- Legacy Cleanup Rule was removed.",
+      "",
+      "## Dependency Impact",
+      "",
+      "- Data Element \"Campaign ID\" impacts 1 resource: \"Marketing Source\".",
       "",
       "## Analysis Warnings",
       "",
