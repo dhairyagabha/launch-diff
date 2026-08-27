@@ -112,9 +112,10 @@ describe("deferred Launch resource resolver", () => {
   it("compares external custom-code sources by fetched content rather than URL text", async () => {
     const baseSourceUrl = "https://assets.example.test/rules/source-a.js";
     const compareSourceUrl = "https://assets.example.test/rules/source-b.js";
+    const embeddedSource = `document.addEventListener("ubxBasicConfigured", function(){_satellite.getVar('User_Registration_Type');});`;
     const fetcher = new StaticFetcher({
-      [baseSourceUrl]: `function sharedExternalCode(){return true;}`,
-      [compareSourceUrl]: `function sharedExternalCode(){return true;}`
+      [baseSourceUrl]: registeredScript(baseSourceUrl, embeddedSource),
+      [compareSourceUrl]: registeredScript(compareSourceUrl, embeddedSource)
     });
     const base = await resolveDeferredLaunchResources({
       library: externalCustomCodeLibrary(baseSourceUrl, "https://assets.example.test/base.js"),
@@ -134,6 +135,11 @@ describe("deferred Launch resource resolver", () => {
           )?.status
         : undefined
     ).toBe("unchanged");
+    expect(
+      (compare.library.resources.find(
+        (resource) => resource.identity.name === "External Source Rule"
+      )?.raw as { actions: Array<{ settings: { source: string } }> }).actions[0]?.settings.source
+    ).toBe(embeddedSource);
   });
 
   it("records unresolved external custom-code sources on the owning resource", async () => {
@@ -302,6 +308,10 @@ function externalCustomCodeLibrary(sourceUrl: string, canonicalUrl: string) {
     };`,
     canonicalUrl
   });
+}
+
+function registeredScript(sourceUrl: string, source: string): string {
+  return `_satellite.__registerScript(${JSON.stringify(sourceUrl)}, ${JSON.stringify(source)});`;
 }
 
 function totalOwners(references: Array<{ owners: unknown[] }>): number {

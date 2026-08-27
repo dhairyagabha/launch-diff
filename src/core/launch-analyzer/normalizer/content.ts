@@ -1,4 +1,5 @@
 import { parse } from "@babel/parser";
+import * as t from "@babel/types";
 import type { Node } from "@babel/types";
 import { format } from "prettier/standalone";
 import * as babelPlugin from "prettier/plugins/babel";
@@ -55,9 +56,12 @@ export async function normalizeResourceContent(
   );
 
   if (language === "javascript") {
+    const registeredScriptSource = extractSatelliteRegisteredScriptSource(sourceForAuthority);
+    const deployedRegisteredScriptSource = extractSatelliteRegisteredScriptSource(deployedSource);
+
     return normalizeJavaScriptSource({
-      deployedSource,
-      sourceForAuthority,
+      deployedSource: deployedRegisteredScriptSource ?? deployedSource,
+      sourceForAuthority: registeredScriptSource ?? sourceForAuthority,
       verifiedUnminifiedSource: input.verifiedUnminifiedSource,
       warnings
     });
@@ -101,6 +105,52 @@ export function normalizeKnownUnorderedObjectKeys(
   unorderedObjectKeyPaths: string[][]
 ): unknown {
   return normalizeObjectKeyOrder(value, unorderedObjectKeyPaths, []);
+}
+
+export function extractSatelliteRegisteredScriptSource(source: string): string | undefined {
+  let ast: t.File;
+
+  try {
+    ast = parse(source, {
+      sourceType: "unambiguous"
+    });
+  } catch {
+    return undefined;
+  }
+
+  const statements = ast.program.body.filter(
+    (statement) => !t.isEmptyStatement(statement)
+  );
+
+  if (statements.length !== 1) {
+    return undefined;
+  }
+
+  const statement = statements[0];
+
+  if (!statement || !t.isExpressionStatement(statement) || !t.isCallExpression(statement.expression)) {
+    return undefined;
+  }
+
+  const call = statement.expression;
+
+  if (!isSatelliteRegisterScriptCallee(call.callee)) {
+    return undefined;
+  }
+
+  const scriptArgument = call.arguments[1];
+
+  if (t.isStringLiteral(scriptArgument)) {
+    return normalizeTextLineEndings(scriptArgument.value);
+  }
+
+  if (t.isTemplateLiteral(scriptArgument) && scriptArgument.expressions.length === 0) {
+    return normalizeTextLineEndings(
+      scriptArgument.quasis.map((quasi) => quasi.value.cooked ?? quasi.value.raw).join("")
+    );
+  }
+
+  return undefined;
 }
 
 async function normalizeJavaScriptSource(input: {
@@ -241,6 +291,33 @@ function displayOrigin(
 
 function canonicalizeAst(ast: Node): string {
   return JSON.stringify(stripParserNoise(ast));
+}
+
+function isSatelliteRegisterScriptCallee(
+  callee: t.Expression | t.V8IntrinsicIdentifier
+): boolean {
+  if (!t.isMemberExpression(callee) || callee.computed) {
+    return false;
+  }
+
+  if (!t.isIdentifier(callee.property, { name: "__registerScript" })) {
+    return false;
+  }
+
+  return isSatelliteObject(callee.object);
+}
+
+function isSatelliteObject(node: t.Expression | t.Super): boolean {
+  if (t.isIdentifier(node, { name: "_satellite" })) {
+    return true;
+  }
+
+  return (
+    t.isMemberExpression(node) &&
+    !node.computed &&
+    t.isIdentifier(node.object, { name: "window" }) &&
+    t.isIdentifier(node.property, { name: "_satellite" })
+  );
 }
 
 function stripParserNoise(value: unknown): unknown {

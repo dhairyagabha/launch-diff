@@ -265,6 +265,60 @@ describe("detailed diff engine", () => {
     expect(displaySource).not.toContain("_satellite._container={rules:[{");
   });
 
+  it("renders registered script wrapper strings as embedded JavaScript", () => {
+    const wrappedSource = `_satellite.__registerScript("https://assets.example.test/source.js", "document.addEventListener(\\"ubxBasicConfigured\\", function(){_satellite.getVar('User_Registration_Type');});");`;
+    const base = readableResource("RL-WRAPPED", {
+      id: "RL-WRAPPED",
+      name: "Wrapped Rule",
+      actions: [
+        {
+          modulePath: "core/src/lib/actions/customCode.js",
+          settings: {
+            source: wrappedSource
+          }
+        }
+      ]
+    });
+    const compare = readableResource("RL-WRAPPED", {
+      id: "RL-WRAPPED",
+      name: "Wrapped Rule",
+      actions: [
+        {
+          modulePath: "core/src/lib/actions/customCode.js",
+          settings: {
+            source: wrappedSource.replace("User_Registration_Type", "User_Type")
+          }
+        }
+      ]
+    });
+    const populated = populateComparisonDetailedDiffs({
+      modelVersion: ANALYZER_MODEL_VERSION,
+      base: library([base]),
+      compare: library([compare]),
+      resources: [
+        {
+          base,
+          compare,
+          status: "modified",
+          match: {
+            method: "launch-resource-id",
+            confidence: "certain"
+          },
+          structuredChanges: [],
+          detailedDiffState: "queued"
+        }
+      ],
+      impacts: [],
+      warnings: [],
+      releaseNotes: ""
+    });
+    const displaySource = populated.resources[0]?.detailedDiff?.baseDisplaySource ?? "";
+
+    expect(displaySource).toContain('document.addEventListener("ubxBasicConfigured", function');
+    expect(displaySource).toContain("_satellite.getVar('User_Registration_Type');");
+    expect(displaySource).not.toContain("__registerScript");
+  });
+
   it("summarizes oversized minified lines instead of materializing unsafe diff tokens", () => {
     const longBase = `var payload="${"a".repeat(13_000)}";`;
     const longCompare = `var payload="${"b".repeat(13_000)}";`;

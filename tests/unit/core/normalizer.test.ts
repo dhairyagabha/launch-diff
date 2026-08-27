@@ -144,4 +144,21 @@ describe("resource normalizer", () => {
     expect(withUnminified.displaySource).toContain("changed only in display source");
     expect(withUnminified.displaySourceOrigin).toBe("verified-unminified");
   });
+
+  it("unwraps Adobe registered script wrappers into reviewable JavaScript", async () => {
+    const normalized = await normalizeResourceContent({
+      contentType: "application/javascript",
+      body: {
+        kind: "text",
+        text: `_satellite.__registerScript('https://assets.example.test/source.js', "document.addEventListener(\\"ubxBasicConfigured\\", function(){setTimeout(function(){_satellite.getVar('User_Registration_Type');}, 400)});");`
+      }
+    });
+
+    expect(normalized.displaySource).toContain(
+      'document.addEventListener("ubxBasicConfigured", function () {'
+    );
+    expect(normalized.displaySource).toContain('_satellite.getVar("User_Registration_Type");');
+    expect(normalized.displaySource).not.toContain("__registerScript");
+    expect(normalized.normalizedSource).not.toContain("assets.example.test/source.js");
+  });
 });

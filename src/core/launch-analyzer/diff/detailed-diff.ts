@@ -1,6 +1,7 @@
 import { parse } from "@babel/parser";
 import * as t from "@babel/types";
 import { resourceGraphId } from "../dependencies/data-elements";
+import { extractSatelliteRegisteredScriptSource } from "../normalizer/content";
 import type {
   ChangeStatus,
   ComparisonResult,
@@ -376,7 +377,9 @@ function resourceSource(resource: LaunchResource): string | undefined {
 function resourceDisplaySource(value: unknown): string | undefined {
   try {
     if (typeof value === "string") {
-      return `${looksLikeJavaScriptSource(value) ? formatJavaScriptLikeSource(value) : value}\n`;
+      const displayValue = extractSatelliteRegisteredScriptSource(value) ?? value;
+
+      return `${looksLikeJavaScriptSource(displayValue) ? formatJavaScriptLikeSource(displayValue) : displayValue}\n`;
     }
 
     return `${renderDisplayValue(value, 0)}\n`;
@@ -439,7 +442,10 @@ function renderDisplayObject(value: Record<string, unknown>, depth: number): str
 }
 
 function renderDisplayString(value: string, depth: number): string {
-  const displayValue = looksLikeJavaScriptSource(value) ? formatJavaScriptLikeSource(value) : value;
+  const unwrappedValue = extractSatelliteRegisteredScriptSource(value) ?? value;
+  const displayValue = looksLikeJavaScriptSource(unwrappedValue)
+    ? formatJavaScriptLikeSource(unwrappedValue)
+    : unwrappedValue;
 
   if (displayValue.includes("\n")) {
     const childIndent = indentation(depth + 1);

@@ -1,6 +1,7 @@
 import { ANALYSIS_LIMITS } from "../model/limits";
 import { calculateCompleteness } from "../model/completeness";
 import { fingerprintUnknown } from "../model/fingerprint";
+import { extractSatelliteRegisteredScriptSource } from "../normalizer/content";
 import { detectCurrentLaunchFormat, parseCurrentLaunchLibrary } from "../parser/current-launch";
 import type {
   AnalysisWarning,
@@ -155,7 +156,9 @@ export async function resolveDeferredLaunchResources(
       externalCustomCodeSources.push({
         reference,
         fileId: resolvedFile.id,
-        source: resolvedText ?? UNRESOLVED_EXTERNAL_CUSTOM_CODE_SOURCE,
+        source: resolvedText
+          ? (extractSatelliteRegisteredScriptSource(resolvedText) ?? resolvedText)
+          : UNRESOLVED_EXTERNAL_CUSTOM_CODE_SOURCE,
         unresolved: resolvedText === undefined
       });
     }

@@ -20,6 +20,7 @@ export {
   resolveDeferredLaunchResources
 } from "./resolver/deferred-resources";
 export {
+  extractSatelliteRegisteredScriptSource,
   normalizeKnownUnorderedObjectKeys,
   normalizeResourceContent,
   normalizeTextLineEndings,
