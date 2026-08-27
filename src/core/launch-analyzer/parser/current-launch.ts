@@ -678,7 +678,9 @@ function isContainerMemberExpression(node: t.Node): boolean {
 
   return (
     pathMatches(path, ["_satellite", "_container"]) ||
-    pathMatches(path, ["window", "_satellite", "_container"])
+    pathMatches(path, ["window", "_satellite", "_container"]) ||
+    pathMatches(path, ["_satellite", "container"]) ||
+    pathMatches(path, ["window", "_satellite", "container"])
   );
 }
 

@@ -86,6 +86,7 @@ test.describe("comparison workspace acceptance", () => {
     await expect(page.getByRole("heading", { name: "Checkout Tracking Rule" })).toBeVisible();
     await expect(page.locator(".compare-filter-summary")).toContainText("4 matching");
     await expectTableHeaderBeforeFirstDiffRow(page);
+    await expectReviewDetailsBeforeDiffTable(page);
     await expectLineMarkerBesideNumber(page);
     await expect(page).toHaveScreenshot("compare-result-dark.png", {
       animations: "disabled"
@@ -356,6 +357,18 @@ async function expectTableHeaderBeforeFirstDiffRow(page: Page): Promise<void> {
   const firstDiffRow = await page.locator(".compare-diff-table tbody tr").first().boundingBox();
 
   expect(tableHeader?.y).toBeLessThan(firstDiffRow?.y ?? 0);
+}
+
+async function expectReviewDetailsBeforeDiffTable(page: Page): Promise<void> {
+  const structuredChanges = await page.locator(".compare-structured-changes").boundingBox();
+  const toolbar = await page.locator(".compare-review-toolbar").boundingBox();
+  const table = await page.locator(".compare-diff-table").boundingBox();
+
+  expect(structuredChanges).not.toBeNull();
+  expect(toolbar).not.toBeNull();
+  expect(table).not.toBeNull();
+  expect(structuredChanges?.y).toBeLessThan(table?.y ?? 0);
+  expect(toolbar?.y).toBeLessThan(table?.y ?? 0);
 }
 
 async function expectDiffTableToFitViewport(page: Page): Promise<void> {

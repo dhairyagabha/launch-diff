@@ -215,6 +215,7 @@ export interface DetailedDiff {
   language: "javascript" | "json" | "html" | "css" | "text" | "binary" | "unknown";
   baseDisplaySource?: string;
   compareDisplaySource?: string;
+  displayWarning?: string;
   hunks: DiffHunk[];
   binaryChanged?: boolean;
   functionFolds: FunctionFold[];

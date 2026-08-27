@@ -1316,6 +1316,9 @@ function DiffPanel(props: {
   const key = comparisonResourceKey(props.comparison);
   const viewed = props.viewedResourceKeys.has(key);
   const diff = props.comparison.detailedDiff;
+  const matchLabel = props.comparison.match
+    ? `${props.comparison.match.method} / ${props.comparison.match.confidence}`
+    : undefined;
 
   function toggleViewed() {
     props.setViewedResourceKeys((current) => {
@@ -1346,55 +1349,11 @@ function DiffPanel(props: {
               status={props.comparison.status}
               impacted={props.comparison.impact?.impacted ?? false}
             />
+            {matchLabel && <span>{matchLabel}</span>}
+            {diff?.language && <span>{diff.language}</span>}
           </div>
         </div>
         <div className="compare-diff-header__actions">
-          <div
-            className="compare-mode-toggle compare-mode-toggle--compact"
-            role="tablist"
-            aria-label="Diff view mode"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={props.diffViewMode === "changes"}
-              className={props.diffViewMode === "changes" ? "is-selected" : undefined}
-              onClick={() => props.setDiffViewMode("changes")}
-            >
-              Changes
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={props.diffViewMode === "source"}
-              className={props.diffViewMode === "source" ? "is-selected" : undefined}
-              onClick={() => props.setDiffViewMode("source")}
-            >
-              Source
-            </button>
-          </div>
-          <div
-            className="compare-mode-toggle compare-mode-toggle--compact"
-            role="group"
-            aria-label="Line layout"
-          >
-            <button
-              type="button"
-              aria-pressed={props.wrapDiffLines}
-              className={props.wrapDiffLines ? "is-selected" : undefined}
-              onClick={() => props.setWrapDiffLines(true)}
-            >
-              Wrap
-            </button>
-            <button
-              type="button"
-              aria-pressed={!props.wrapDiffLines}
-              className={!props.wrapDiffLines ? "is-selected" : undefined}
-              onClick={() => props.setWrapDiffLines(false)}
-            >
-              Scroll
-            </button>
-          </div>
           <button
             className="compare-icon-button"
             type="button"
@@ -1422,47 +1381,26 @@ function DiffPanel(props: {
 
       {diff ? (
         <>
-          {props.diffViewMode === "source" ? (
-            <ReadableSourceView diff={diff} wrapLines={props.wrapDiffLines} />
-          ) : diff.binaryChanged ? (
-            <p className="compare-empty-state">Binary content changed.</p>
-          ) : diff.hunks.length > 0 ? (
-            <div className="compare-diff-table-wrap">
-              <table className="compare-diff-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Base</th>
-                    <th scope="col">Source</th>
-                    <th scope="col">Compare</th>
-                    <th scope="col">Source</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {diff.hunks.map((hunk) => (
-                    <DiffHunkRows
-                      key={hunk.id}
-                      hunk={hunk}
-                      language={diff.language}
-                      expanded={props.expandedHunkIds.has(hunk.id)}
-                      collapsedFoldIds={props.collapsedFoldIds}
-                      folds={diff.functionFolds}
-                      onToggleExpanded={() =>
-                        props.setExpandedHunkIds((current) => toggleSetValue(current, hunk.id))
-                      }
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="compare-empty-state">No line-level differences were generated.</p>
-          )}
           <DiffSupplement
             comparison={props.comparison}
             diff={diff}
+            diffViewMode={props.diffViewMode}
+            wrapDiffLines={props.wrapDiffLines}
             collapsedFoldIds={props.collapsedFoldIds}
             setCollapsedFoldIds={props.setCollapsedFoldIds}
+            setDiffViewMode={props.setDiffViewMode}
+            setWrapDiffLines={props.setWrapDiffLines}
           />
+          {props.diffViewMode === "source" ? (
+            <ReadableSourceView diff={diff} wrapLines={props.wrapDiffLines} />
+          ) : (
+            <DiffContent
+              diff={diff}
+              expandedHunkIds={props.expandedHunkIds}
+              collapsedFoldIds={props.collapsedFoldIds}
+              setExpandedHunkIds={props.setExpandedHunkIds}
+            />
+          )}
         </>
       ) : (
         <>
@@ -1473,6 +1411,59 @@ function DiffPanel(props: {
         </>
       )}
     </section>
+  );
+}
+
+function DiffContent(props: {
+  diff: NonNullable<ResourceComparison["detailedDiff"]>;
+  expandedHunkIds: Set<string>;
+  collapsedFoldIds: Set<string>;
+  setExpandedHunkIds: Dispatch<SetStateAction<Set<string>>>;
+}) {
+  if (props.diff.binaryChanged) {
+    return <p className="compare-empty-state">Binary content changed.</p>;
+  }
+
+  if (props.diff.hunks.length === 0) {
+    return <p className="compare-empty-state">No line-level differences were generated.</p>;
+  }
+
+  return (
+    <>
+      {props.diff.displayWarning && (
+        <p className="compare-diff-warning">
+          <AlertIcon size={16} />
+          <span>{props.diff.displayWarning}</span>
+        </p>
+      )}
+      <div className="compare-diff-table-wrap">
+        <table className="compare-diff-table">
+          <thead>
+            <tr>
+              <th scope="col">Base</th>
+              <th scope="col">Source</th>
+              <th scope="col">Compare</th>
+              <th scope="col">Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {props.diff.hunks.map((hunk) => (
+              <DiffHunkRows
+                key={hunk.id}
+                hunk={hunk}
+                language={props.diff.language}
+                expanded={props.expandedHunkIds.has(hunk.id)}
+                collapsedFoldIds={props.collapsedFoldIds}
+                folds={props.diff.functionFolds}
+                onToggleExpanded={() =>
+                  props.setExpandedHunkIds((current) => toggleSetValue(current, hunk.id))
+                }
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -1546,23 +1537,15 @@ function SourceFragments(props: {
 function DiffSupplement(props: {
   comparison: ResourceComparison;
   diff?: NonNullable<ResourceComparison["detailedDiff"]>;
+  diffViewMode?: DiffViewMode;
+  wrapDiffLines?: boolean;
   collapsedFoldIds?: Set<string>;
   setCollapsedFoldIds?: Dispatch<SetStateAction<Set<string>>>;
+  setDiffViewMode?: (value: DiffViewMode) => void;
+  setWrapDiffLines?: (value: boolean) => void;
 }) {
-  const folds = props.diff ? flattenFunctionFolds(props.diff.functionFolds) : [];
-
   return (
     <section className="compare-diff-supplement" aria-label="Resource review details">
-      {props.diff && folds.length > 0 && props.collapsedFoldIds && props.setCollapsedFoldIds && (
-        <details className="compare-code-outline" open>
-          <summary>Code outline ({folds.length})</summary>
-          <FunctionFoldList
-            folds={props.diff.functionFolds}
-            collapsedFoldIds={props.collapsedFoldIds}
-            setCollapsedFoldIds={props.setCollapsedFoldIds}
-          />
-        </details>
-      )}
       {props.comparison.structuredChanges.length > 0 && (
         <details className="compare-structured-changes">
           <summary>Structured changes ({props.comparison.structuredChanges.length})</summary>
@@ -1578,6 +1561,97 @@ function DiffSupplement(props: {
         </details>
       )}
       <ResourceDetails comparison={props.comparison} diff={props.diff} />
+      {props.diff &&
+        props.collapsedFoldIds &&
+        props.setCollapsedFoldIds &&
+        props.diffViewMode &&
+        typeof props.wrapDiffLines === "boolean" &&
+        props.setDiffViewMode &&
+        props.setWrapDiffLines && (
+          <DiffReviewToolbar
+            diff={props.diff}
+            diffViewMode={props.diffViewMode}
+            wrapDiffLines={props.wrapDiffLines}
+            collapsedFoldIds={props.collapsedFoldIds}
+            setCollapsedFoldIds={props.setCollapsedFoldIds}
+            setDiffViewMode={props.setDiffViewMode}
+            setWrapDiffLines={props.setWrapDiffLines}
+          />
+      )}
+    </section>
+  );
+}
+
+function DiffReviewToolbar(props: {
+  diff: NonNullable<ResourceComparison["detailedDiff"]>;
+  diffViewMode: DiffViewMode;
+  wrapDiffLines: boolean;
+  collapsedFoldIds: Set<string>;
+  setCollapsedFoldIds: Dispatch<SetStateAction<Set<string>>>;
+  setDiffViewMode: (value: DiffViewMode) => void;
+  setWrapDiffLines: (value: boolean) => void;
+}) {
+  const folds = flattenFunctionFolds(props.diff.functionFolds);
+
+  return (
+    <section className="compare-review-toolbar" aria-label="Diff display controls">
+      {folds.length > 0 && (
+        <div className="compare-code-outline" aria-label={`Code outline (${folds.length})`}>
+          <FunctionFoldList
+            folds={props.diff.functionFolds}
+            collapsedFoldIds={props.collapsedFoldIds}
+            setCollapsedFoldIds={props.setCollapsedFoldIds}
+          />
+        </div>
+      )}
+      <div className="compare-review-toolbar__controls">
+        <div
+          className="compare-mode-toggle compare-mode-toggle--compact"
+          role="tablist"
+          aria-label="Diff view mode"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={props.diffViewMode === "changes"}
+            className={props.diffViewMode === "changes" ? "is-selected" : undefined}
+            onClick={() => props.setDiffViewMode("changes")}
+          >
+            Changes
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={props.diffViewMode === "source"}
+            className={props.diffViewMode === "source" ? "is-selected" : undefined}
+            onClick={() => props.setDiffViewMode("source")}
+          >
+            Source
+          </button>
+        </div>
+        <div
+          className="compare-mode-toggle compare-mode-toggle--compact"
+          role="group"
+          aria-label="Line layout"
+        >
+          <button
+            type="button"
+            aria-pressed={props.wrapDiffLines}
+            className={props.wrapDiffLines ? "is-selected" : undefined}
+            onClick={() => props.setWrapDiffLines(true)}
+          >
+            Wrap
+          </button>
+          <button
+            type="button"
+            aria-pressed={!props.wrapDiffLines}
+            className={!props.wrapDiffLines ? "is-selected" : undefined}
+            onClick={() => props.setWrapDiffLines(false)}
+          >
+            Scroll
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

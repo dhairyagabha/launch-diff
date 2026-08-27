@@ -30,6 +30,32 @@ describe("current Launch parser", () => {
     });
   });
 
+  it("detects the window._satellite.container runtime assignment used by deployed builds", () => {
+    const source = `window._satellite.container={
+      buildInfo:{turbineVersion:"29.0.0",turbineBuildDate:"2026-01-01T00:00:00Z",buildDate:"2026-01-02T00:00:00Z",minified:true},
+      company:{orgId:"ABCDEF1234567890ABCDEF12@AdobeOrg",dynamicCdnEnabled:true},
+      property:{name:"Property",id:"PR12345678901234567890123456789012",settings:{undefinedVarsReturnEmpty:false,domains:["example.test"],ruleComponentSequencingEnabled:true}},
+      environment:{id:"EN12345678901234567890123456789012",stage:"production"},
+      rules:[{id:"RL12345678901234567890123456789012",name:"Deployed Rule",events:[],conditions:[],actions:[]}],
+      dataElements:{Hostname:{modulePath:"core/src/lib/dataElements/javascriptVariable.js",storageDuration:"pageview"}},
+      extensions:{core:{displayName:"Core",modules:{}}}
+    };`;
+    const library = parseCurrentLaunchLibrary({
+      source,
+      canonicalUrl: "https://assets.example.test/launch/current/production.min.js"
+    });
+
+    expect(detectCurrentLaunchFormat(source)).toEqual({
+      detected: true,
+      reason: "container-object-literal"
+    });
+    expect(countResources(library.resources, "runtime")).toBe(1);
+    expect(countResources(library.resources, "rule")).toBe(1);
+    expect(countResources(library.resources, "data-element")).toBe(1);
+    expect(countResources(library.resources, "extension")).toBe(1);
+    expect(countResources(library.resources, "unmapped")).toBe(0);
+  });
+
   it("extracts rules, data elements, extensions, child components, and runtime metadata", () => {
     const manifest = loadSanitizedFixtureManifest("current-container-minimal");
     const source = readFixtureSource();

@@ -17,6 +17,12 @@ import type {
 } from "../model/types";
 
 const DEFAULT_CONTEXT_LINE_COUNT = 3;
+const MAX_DIFF_LCS_CELLS = 1_000_000;
+const MAX_DIFF_DISPLAY_SOURCE_CHARS = 750_000;
+const MAX_DIFF_LINE_CHARS = 12_000;
+const MAX_INLINE_DIFF_CELLS = 750_000;
+const MAX_SYNTAX_LINE_CHARS = 2_000;
+const MAX_FUNCTION_FOLD_SOURCE_CHARS = 500_000;
 
 export interface BuildDetailedDiffInput {
   baseSource?: string;
@@ -75,6 +81,17 @@ export function buildDetailedDiff(input: BuildDetailedDiffInput): DetailedDiff {
 
   const baseLines = splitSourceLines(input.baseSource);
   const compareLines = splitSourceLines(input.compareSource);
+  const displayLimitWarning = oversizedDiffDisplayWarning(
+    input.baseSource,
+    input.compareSource,
+    baseLines,
+    compareLines
+  );
+
+  if (displayLimitWarning) {
+    return buildLimitedDetailedDiff(input, language, baseLines, compareLines, displayLimitWarning);
+  }
+
   const rows = buildSplitRows(diffLines(baseLines, compareLines), language);
   const hunks = buildHunks(rows, input.contextLineCount ?? DEFAULT_CONTEXT_LINE_COUNT);
 
@@ -86,6 +103,111 @@ export function buildDetailedDiff(input: BuildDetailedDiffInput): DetailedDiff {
     hunks,
     functionFolds: buildFunctionFolds(input.baseSource, input.compareSource, rows, language)
   };
+}
+
+function oversizedDiffDisplayWarning(
+  baseSource: string | undefined,
+  compareSource: string | undefined,
+  baseLines: string[],
+  compareLines: string[]
+): string | undefined {
+  const totalCharacters = (baseSource?.length ?? 0) + (compareSource?.length ?? 0);
+
+  if (totalCharacters > MAX_DIFF_DISPLAY_SOURCE_CHARS) {
+    return [
+      "Line-level rendering was limited because this resource is very large.",
+      "The deployed artifact is still used for change classification; provide a non-minified Adobe Tags environment URL for readable review."
+    ].join(" ");
+  }
+
+  if (baseLines.some(isOversizedLine) || compareLines.some(isOversizedLine)) {
+    return [
+      "Line-level rendering was limited because this resource contains a very long minified line.",
+      "The deployed artifact is still used for change classification; provide a non-minified Adobe Tags environment URL for readable review."
+    ].join(" ");
+  }
+
+  if (baseLines.length * compareLines.length > MAX_DIFF_LCS_CELLS) {
+    return [
+      "Line-level rendering was limited because this resource has too many lines for an interactive split diff.",
+      "The deployed artifact is still used for change classification; provide a non-minified Adobe Tags environment URL for readable review."
+    ].join(" ");
+  }
+}
+
+function isOversizedLine(line: string): boolean {
+  return line.length > MAX_DIFF_LINE_CHARS;
+}
+
+function buildLimitedDetailedDiff(
+  input: BuildDetailedDiffInput,
+  language: DetailedDiff["language"],
+  baseLines: string[],
+  compareLines: string[],
+  warning: string
+): DetailedDiff {
+  const row: SplitDiffRow = {
+    id: "row:0",
+    ...(input.baseSource !== undefined
+      ? {
+          base: createSummaryDiffLine("removed", "base", baseLines.length, warning)
+        }
+      : {}),
+    ...(input.compareSource !== undefined
+      ? {
+          compare: createSummaryDiffLine("added", "compare", compareLines.length, warning)
+        }
+      : {}),
+    changed: true
+  };
+
+  return {
+    fileId: input.fileId ?? "source",
+    language,
+    baseDisplaySource:
+      input.baseSource === undefined ? undefined : displaySourceSummary("Base", baseLines, warning),
+    compareDisplaySource:
+      input.compareSource === undefined
+        ? undefined
+        : displaySourceSummary("Compare", compareLines, warning),
+    displayWarning: warning,
+    hunks: [
+      {
+        id: "hunk:1",
+        oldStart: baseLines.length > 0 ? 1 : 0,
+        oldLines: baseLines.length,
+        newStart: compareLines.length > 0 ? 1 : 0,
+        newLines: compareLines.length,
+        lines: flattenRowsToLines([row]),
+        rows: [row],
+        collapsed: false
+      }
+    ],
+    functionFolds: []
+  };
+}
+
+function createSummaryDiffLine(
+  type: DiffLine["type"],
+  side: "base" | "compare",
+  sourceLineCount: number,
+  warning: string
+): DiffLine {
+  return {
+    id: `row:0:${side}`,
+    type,
+    side,
+    oldLineNumber: side === "base" && sourceLineCount > 0 ? 1 : undefined,
+    newLineNumber: side === "compare" && sourceLineCount > 0 ? 1 : undefined,
+    content: warning,
+    syntaxTokens: [{ value: warning, kind: "text" }]
+  };
+}
+
+function displaySourceSummary(side: "Base" | "Compare", lines: string[], warning: string): string {
+  const lineLabel = lines.length === 1 ? "1 line" : `${lines.length} lines`;
+
+  return `${side} source display limited (${lineLabel}). ${warning}\n`;
 }
 
 export function createDetailedDiffQueue(
@@ -713,7 +835,7 @@ function createDiffLine(
     newLineNumber: side === "compare" ? operation.newLineNumber : undefined,
     content: operation.content,
     ...(tokens ? { tokens } : {}),
-    syntaxTokens: tokenizeSyntaxLine(operation.content, language)
+    syntaxTokens: tokenizeSyntaxLineForDiff(operation.content, language)
   };
 }
 
@@ -825,9 +947,14 @@ function diffInlineTokens(
 ): {
   base: DiffToken[];
   compare: DiffToken[];
-} {
+} | undefined {
   const baseParts = splitInlineParts(base);
   const compareParts = splitInlineParts(compare);
+
+  if (baseParts.length * compareParts.length > MAX_INLINE_DIFF_CELLS) {
+    return undefined;
+  }
+
   const matrix = buildLcsMatrix(baseParts, compareParts);
   const baseTokens: DiffToken[] = [];
   const compareTokens: DiffToken[] = [];
@@ -870,6 +997,17 @@ function diffInlineTokens(
 
 function splitInlineParts(value: string): string[] {
   return value.match(/[A-Za-z_$][\w$]*|\d+(?:\.\d+)?|\s+|./g) ?? [];
+}
+
+function tokenizeSyntaxLineForDiff(
+  content: string,
+  language: DetailedDiff["language"]
+): SyntaxToken[] {
+  if (content.length > MAX_SYNTAX_LINE_CHARS) {
+    return [{ value: content, kind: "text" }];
+  }
+
+  return tokenizeSyntaxLine(content, language);
 }
 
 function tokenizePlainTextLine(content: string): SyntaxToken[] {
@@ -1063,6 +1201,10 @@ function buildFunctionFolds(
     return [];
   }
 
+  if (sourceTooLargeForFunctionFolds(baseSource) || sourceTooLargeForFunctionFolds(compareSource)) {
+    return [];
+  }
+
   const baseChangedLines = changedLinesForSide(rows, "base");
   const compareChangedLines = changedLinesForSide(rows, "compare");
   const baseFunctions = parseFunctionRanges(baseSource);
@@ -1075,6 +1217,10 @@ function buildFunctionFolds(
   );
 
   return nestFunctionFolds(folds);
+}
+
+function sourceTooLargeForFunctionFolds(source: string | undefined): boolean {
+  return (source?.length ?? 0) > MAX_FUNCTION_FOLD_SOURCE_CHARS;
 }
 
 function changedLinesForSide(rows: SplitDiffRow[], side: "base" | "compare"): Set<number> {

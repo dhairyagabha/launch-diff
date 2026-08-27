@@ -265,6 +265,26 @@ describe("detailed diff engine", () => {
     expect(displaySource).not.toContain("_satellite._container={rules:[{");
   });
 
+  it("summarizes oversized minified lines instead of materializing unsafe diff tokens", () => {
+    const longBase = `var payload="${"a".repeat(13_000)}";`;
+    const longCompare = `var payload="${"b".repeat(13_000)}";`;
+    const diff = buildDetailedDiff({
+      baseSource: longBase,
+      compareSource: longCompare,
+      language: "javascript"
+    });
+    const rows = diff.hunks.flatMap((hunk) => hunk.rows);
+
+    expect(diff.displayWarning).toContain("very long minified line");
+    expect(diff.baseDisplaySource).toContain("Base source display limited");
+    expect(diff.compareDisplaySource).toContain("Compare source display limited");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.base?.content).toBe(diff.displayWarning);
+    expect(rows[0]?.compare?.content).toBe(diff.displayWarning);
+    expect(rows[0]?.base?.tokens).toBeUndefined();
+    expect(JSON.stringify(diff)).not.toContain("a".repeat(200));
+  });
+
   it("comparison results automatically queue changed resources for detailed diffs", () => {
     const result = compareResolvedLibraries(
       library([resource("RL-MOD", "old"), resource("RL-SAME", "same")]),
