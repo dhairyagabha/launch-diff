@@ -1309,7 +1309,7 @@ a {
       rgba(13, 17, 23, 0.78) 42%,
       rgba(13, 17, 23, 0.28) 100%
     ),
-    url("/landing/split-diff-hero.webp");
+    url("/landing/workspace-split-diff.webp");
   background-position: center;
   background-size: cover;
   color: #ffffff;
@@ -1607,7 +1607,7 @@ a {
     padding: 88px 18px 64px;
     background-image:
       linear-gradient(180deg, rgba(13, 17, 23, 0.96) 0%, rgba(13, 17, 23, 0.72) 100%),
-      url("/landing/split-diff-hero.webp");
+      url("/landing/workspace-split-diff.webp");
   }
 
   .landing-hero h1 {

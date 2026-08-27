@@ -9,24 +9,24 @@ const storySections = [
     eyebrow: "Deployed changes",
     title: "See every deployed change.",
     body: "LaunchDiff treats the exact CDN artifact as authoritative, resolves parser-confirmed deferred Launch resources, and keeps GitHub-style split diffs focused on the code that actually shipped.",
-    image: "/landing/split-diff-hero.webp",
-    alt: "Dark product visual showing a split diff with rule and data element resources."
+    image: "/landing/workspace-split-diff.webp",
+    alt: "Actual LaunchDiff comparison workspace showing a split diff with rule and data element resources."
   },
   {
     id: "impact",
     eyebrow: "Dependency impact",
     title: "Understand downstream impact.",
     body: "Data Element references from percent tokens and literal getVar calls are traced into direct and transitive paths, so unchanged resources can still be flagged as impacted without being mislabeled as modified.",
-    image: "/landing/dependency-impact.webp",
-    alt: "Light product visual showing a Data Element dependency graph flowing into impacted rules."
+    image: "/landing/workspace-impacted-resources.webp",
+    alt: "Actual LaunchDiff impacted resources view showing a transitive Data Element dependency."
   },
   {
     id: "resolved",
     eyebrow: "Resolved library",
     title: "Validate the complete resource graph.",
     body: "Canonical and deferred resources end in explicit states: resolved, failed, skipped by a documented limit, or unsupported. Warnings and retry paths stay visible instead of disappearing into a clean-looking diff.",
-    image: "/landing/resolved-library.webp",
-    alt: "Dark product visual showing canonical and deferred Launch resources with resolved and warning states."
+    image: "/landing/workspace-resolved-files.webp",
+    alt: "Actual LaunchDiff resolved files view showing resolved and failed fetched resources."
   }
 ];
 
@@ -115,8 +115,8 @@ export default function HomePage() {
               className="landing-story__visual"
               src={section.image}
               alt={section.alt}
-              width={1672}
-              height={941}
+              width={1280}
+              height={720}
               sizes="(max-width: 980px) calc(100vw - 36px), 58vw"
               loading="lazy"
             />
