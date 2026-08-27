@@ -54,6 +54,21 @@ const reviewPrinciples = [
   }
 ];
 
+const documentationItems = [
+  {
+    title: "Compare setup",
+    body: "Use public Adobe Tags library URLs or a saved config. Non-minified environment URLs make review easier, but deployed artifacts still drive classification."
+  },
+  {
+    title: "Diff review",
+    body: "Changed and needs-review resources open in a split diff with resolved external code, readable formatting, and explicit unresolved states."
+  },
+  {
+    title: "Release notes",
+    body: "Deterministic summaries group direct changes, recreated-resource candidates, Data Element references, dependency impact, and analysis warnings."
+  }
+];
+
 export default function HomePage() {
   return (
     <main className="landing-page">
@@ -65,6 +80,7 @@ export default function HomePage() {
         <nav className="landing-nav" aria-label="Landing page sections">
           <a href="#how-it-works">How it works</a>
           <a href="#features">Features</a>
+          <a href="#documentation">Documentation</a>
           <a href="#privacy">Privacy</a>
           {repositoryUrl ? (
             <a href={repositoryUrl}>GitHub</a>
@@ -97,8 +113,8 @@ export default function HomePage() {
             </a>
           </div>
           <p className="landing-hero__note">
-            The detailed comparison workspace opens at 1024 CSS pixels and wider for accurate
-            side-by-side review.
+            For accurate split review, open the comparison workspace on a desktop viewport, 1024
+            CSS pixels or wider.
           </p>
         </div>
       </section>
@@ -164,6 +180,27 @@ export default function HomePage() {
             or source-map interpretation.
           </p>
         </div>
+      </section>
+
+      <section id="documentation" className="landing-documentation" aria-labelledby="docs-title">
+        <div className="landing-section-grid">
+          <div>
+            <p className="landing-eyebrow">Documentation</p>
+            <h2 id="docs-title">The review path is visible before analysis starts.</h2>
+          </div>
+          <p>
+            A compact guide covers setup, review flow, and output semantics, so teams know what
+            LaunchDiff will and will not infer before pasting a URL.
+          </p>
+        </div>
+        <ol className="landing-doc-list">
+          {documentationItems.map((item) => (
+            <li key={item.title}>
+              <strong>{item.title}</strong>
+              <span>{item.body}</span>
+            </li>
+          ))}
+        </ol>
       </section>
 
       <section id="privacy" className="landing-trust" aria-labelledby="trust-title">

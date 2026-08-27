@@ -9,6 +9,7 @@ test.describe("landing page", () => {
       page.getByRole("heading", { name: "Compare Adobe Launch libraries with confidence." })
     ).toBeVisible();
     await expect(page.getByRole("link", { name: "LaunchDiff home" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Documentation" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Compare libraries" }).first()).toBeVisible();
     await expect(page.locator(".landing-story__visual")).toHaveCount(3);
     await expect
@@ -40,6 +41,9 @@ test.describe("landing page", () => {
     await expect(page.getByRole("heading", { name: "See every deployed change." })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Understand downstream impact." })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Validate the complete resource graph." })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "The review path is visible before analysis starts." })
+    ).toBeVisible();
     await expectNoAxeViolations(page);
   });
 
@@ -48,7 +52,7 @@ test.describe("landing page", () => {
     await page.goto("/");
 
     await expect(page.getByText("Use desktop").first()).toBeVisible();
-    await expect(page.getByText("The detailed comparison workspace opens at 1024 CSS pixels")).toBeVisible();
+    await expect(page.getByText("For accurate split review")).toBeVisible();
 
     await page.getByRole("link", { name: "Compare libraries" }).first().click();
     await expect(page.getByRole("heading", { name: "Desktop workspace required" })).toBeVisible();
