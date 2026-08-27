@@ -139,7 +139,7 @@ describe("compare workspace model", () => {
       browser: { family: "Chrome", majorVersion: "141" }
     });
 
-    expect(report).toContain('"version": "0.1.0"');
+    expect(report).toContain('"version": "1.0.0"');
     expect(report).toContain('"saved-config"');
     expect(report).toContain('"deferred-fetch-failed"');
     expect(report).toContain('"Chrome"');

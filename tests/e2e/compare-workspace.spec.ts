@@ -132,7 +132,7 @@ test.describe("comparison workspace acceptance", () => {
       page.getByRole("button", { name: "Sanitized diagnostic report copied" })
     ).toBeVisible();
     const diagnosticReport = await page.evaluate(() => navigator.clipboard.readText());
-    expect(diagnosticReport).toContain('"version": "0.1.0"');
+    expect(diagnosticReport).toContain('"version": "1.0.0"');
     expect(diagnosticReport).toContain('"inputMode": "direct-url"');
     expect(diagnosticReport).toContain('"deferred-fetch-failed"');
     expect(diagnosticReport).not.toContain("https://");
