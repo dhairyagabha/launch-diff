@@ -1,18 +1,32 @@
 import { ANALYSIS_LIMITS } from "../model/limits";
 import { calculateCompleteness } from "../model/completeness";
+import { fingerprintUnknown } from "../model/fingerprint";
 import { detectCurrentLaunchFormat, parseCurrentLaunchLibrary } from "../parser/current-launch";
 import type {
   AnalysisWarning,
+  LaunchChildComponent,
+  LaunchResource,
   ResolvedFile,
   ResolvedLibrary,
   ResourceOwnerRef
 } from "../model/types";
 import type { ResourceFetcher, ResourceFetchResult } from "../fetcher/resource-fetcher";
 
+type DeferredLaunchResourceTargetKind =
+  | "extension-module-file"
+  | "external-custom-code-source";
+
+export interface DeferredLaunchResourceTarget {
+  owner: ResourceOwnerRef;
+  sourcePath: string[];
+  kind: DeferredLaunchResourceTargetKind;
+}
+
 export interface DeferredLaunchResourceReference {
   url: string;
   owners: ResourceOwnerRef[];
   sourcePath: string[];
+  targets: DeferredLaunchResourceTarget[];
 }
 
 export interface ResolveDeferredResourcesInput {
@@ -36,45 +50,69 @@ interface ExtensionModuleFilePath {
   hostedLibFilesBaseUrl?: string;
 }
 
+interface ResolvedExternalCustomCodeSource {
+  reference: DeferredLaunchResourceReference;
+  fileId: string;
+  source: string;
+}
+
+const CUSTOM_CODE_MODULE_PATHS = new Set([
+  "core/src/lib/actions/customCode.js",
+  "core/src/lib/dataElements/customCode.js"
+]);
+
 export function discoverDeferredLaunchResources(
   library: ResolvedLibrary
 ): DeferredLaunchResourceReference[] {
   const moduleOwners = collectModuleOwners(library);
   const referencesByUrl = new Map<string, DeferredLaunchResourceReference>();
 
-  for (const moduleFilePath of collectExtensionModuleFilePaths(library)) {
+  for (const reference of collectExtensionModuleFilePathReferences(library, moduleOwners)) {
+    addOrMergeReference(referencesByUrl, reference);
+  }
+
+  for (const reference of collectExternalCustomCodeSourceReferences(library)) {
+    addOrMergeReference(referencesByUrl, reference);
+  }
+
+  return [...referencesByUrl.values()];
+}
+
+function collectExtensionModuleFilePathReferences(
+  library: ResolvedLibrary,
+  moduleOwners: Map<string, ResourceOwnerRef[]>
+): DeferredLaunchResourceReference[] {
+  return collectExtensionModuleFilePaths(library).flatMap((moduleFilePath) => {
     const url = resolveDeferredFileUrl(
       moduleFilePath.hostedLibFilesBaseUrl,
       moduleFilePath.filePath
     );
 
     if (!url) {
-      continue;
+      return [];
     }
 
     const owners = ownersForModuleFilePath(moduleFilePath, moduleOwners);
-    const existing = referencesByUrl.get(url);
+    const sourcePath = [
+      "extensions",
+      moduleFilePath.extensionName,
+      "modules",
+      moduleFilePath.modulePath,
+      "filePaths",
+      String(moduleFilePath.filePathIndex)
+    ];
 
-    if (existing) {
-      existing.owners = mergeOwners(existing.owners, owners);
-      continue;
-    }
-
-    referencesByUrl.set(url, {
+    return {
       url,
       owners,
-      sourcePath: [
-        "extensions",
-        moduleFilePath.extensionName,
-        "modules",
-        moduleFilePath.modulePath,
-        "filePaths",
-        String(moduleFilePath.filePathIndex)
-      ]
-    });
-  }
-
-  return [...referencesByUrl.values()];
+      sourcePath,
+      targets: owners.map((owner) => ({
+        owner,
+        sourcePath,
+        kind: "extension-module-file" as const
+      }))
+    };
+  });
 }
 
 export async function resolveDeferredLaunchResources(
@@ -87,6 +125,7 @@ export async function resolveDeferredLaunchResources(
   const skippedReferences: DeferredLaunchResourceReference[] = [];
   const warnings: AnalysisWarning[] = [];
   const deferredFiles: ResolvedFile[] = [];
+  const externalCustomCodeSources: ResolvedExternalCustomCodeSource[] = [];
 
   for (const reference of discoverDeferredLaunchResources(input.library)) {
     enqueueReference({
@@ -106,6 +145,14 @@ export async function resolveDeferredLaunchResources(
     const resolvedFile = createDeferredResolvedFile(deferredFiles.length, reference, result);
 
     deferredFiles.push(resolvedFile);
+
+    if (result.ok && result.body.kind === "text" && hasExternalCustomCodeTarget(reference)) {
+      externalCustomCodeSources.push({
+        reference,
+        fileId: resolvedFile.id,
+        source: result.body.text
+      });
+    }
 
     if (result.ok && result.body.kind === "text" && next.depth < maxRecursionDepth) {
       for (const nestedReference of discoverNestedDeferredReferences(result.body.text, reference.url)) {
@@ -139,6 +186,10 @@ export async function resolveDeferredLaunchResources(
     references: [...referencesByUrl.values()],
     library: {
       ...input.library,
+      resources: attachResolvedExternalCustomCodeSources(
+        input.library.resources,
+        externalCustomCodeSources
+      ),
       files,
       warnings: [...input.library.warnings, ...warnings],
       completeness: calculateCompleteness({
@@ -162,7 +213,7 @@ function enqueueReference(input: {
   const existing = input.referencesByUrl.get(input.reference.url);
 
   if (existing) {
-    existing.owners = mergeOwners(existing.owners, input.reference.owners);
+    input.referencesByUrl.set(input.reference.url, mergeReferences(existing, input.reference));
     return;
   }
 
@@ -177,6 +228,15 @@ function enqueueReference(input: {
     reference: input.reference,
     depth: input.depth
   });
+}
+
+function addOrMergeReference(
+  referencesByUrl: Map<string, DeferredLaunchResourceReference>,
+  reference: DeferredLaunchResourceReference
+): void {
+  const existing = referencesByUrl.get(reference.url);
+
+  referencesByUrl.set(reference.url, existing ? mergeReferences(existing, reference) : reference);
 }
 
 function discoverNestedDeferredReferences(
@@ -226,6 +286,141 @@ function collectExtensionModuleFilePaths(library: ResolvedLibrary): ExtensionMod
       }));
     });
   });
+}
+
+function collectExternalCustomCodeSourceReferences(
+  library: ResolvedLibrary
+): DeferredLaunchResourceReference[] {
+  return library.resources.flatMap((resource) => {
+    if (resource.identity.resourceType === "rule") {
+      return collectRuleExternalCustomCodeSourceReferences(resource);
+    }
+
+    if (resource.identity.resourceType === "data-element") {
+      return collectDataElementExternalCustomCodeSourceReference(resource);
+    }
+
+    return [];
+  });
+}
+
+function collectRuleExternalCustomCodeSourceReferences(
+  resource: LaunchResource
+): DeferredLaunchResourceReference[] {
+  const rule = asRecord(resource.raw);
+
+  if (!rule) {
+    return [];
+  }
+
+  return [
+    ...collectRuleComponentExternalCustomCodeSourceReferences(resource, rule, "events"),
+    ...collectRuleComponentExternalCustomCodeSourceReferences(resource, rule, "conditions"),
+    ...collectRuleComponentExternalCustomCodeSourceReferences(resource, rule, "actions")
+  ];
+}
+
+function collectRuleComponentExternalCustomCodeSourceReferences(
+  resource: LaunchResource,
+  rule: Record<string, unknown>,
+  collectionName: "events" | "conditions" | "actions"
+): DeferredLaunchResourceReference[] {
+  const components = Array.isArray(rule[collectionName]) ? rule[collectionName] : [];
+
+  return components.flatMap((component, index) => {
+    const url = externalCustomCodeSourceUrl(component);
+
+    if (!url) {
+      return [];
+    }
+
+    const componentRecord = asRecord(component);
+    const modulePath = asString(componentRecord?.modulePath) ?? "custom-code";
+    const owner: ResourceOwnerRef = {
+      resourceType: "rule",
+      resourceId: resource.identity.launchResourceId,
+      resourceName: resource.identity.name,
+      childPath: [collectionName, String(index), modulePath]
+    };
+    const sourcePath = [collectionName, String(index), "settings", "source"];
+
+    return createExternalCustomCodeSourceReference(url, owner, sourcePath);
+  });
+}
+
+function collectDataElementExternalCustomCodeSourceReference(
+  resource: LaunchResource
+): DeferredLaunchResourceReference[] {
+  const url = externalCustomCodeSourceUrl(resource.raw);
+
+  if (!url) {
+    return [];
+  }
+
+  const owner: ResourceOwnerRef = {
+    resourceType: "data-element",
+    resourceId: resource.identity.launchResourceId,
+    resourceName: resource.identity.name,
+    childPath: ["settings", "source"]
+  };
+  const sourcePath = ["settings", "source"];
+
+  return createExternalCustomCodeSourceReference(url, owner, sourcePath);
+}
+
+function createExternalCustomCodeSourceReference(
+  url: string,
+  owner: ResourceOwnerRef,
+  sourcePath: string[]
+): DeferredLaunchResourceReference[] {
+  return [
+    {
+      url,
+      owners: [owner],
+      sourcePath,
+      targets: [
+        {
+          owner,
+          sourcePath,
+          kind: "external-custom-code-source"
+        }
+      ]
+    }
+  ];
+}
+
+function externalCustomCodeSourceUrl(value: unknown): string | undefined {
+  const record = asRecord(value);
+  const modulePath = asString(record?.modulePath);
+  const settings = asRecord(record?.settings);
+  const source = asString(settings?.source);
+  const language = asString(settings?.language);
+
+  if (
+    !modulePath ||
+    !CUSTOM_CODE_MODULE_PATHS.has(modulePath) ||
+    settings?.isExternal !== true ||
+    !source ||
+    (language !== undefined && language !== "javascript")
+  ) {
+    return undefined;
+  }
+
+  return normalizeExternalCustomCodeUrl(source);
+}
+
+function normalizeExternalCustomCodeUrl(value: string): string | undefined {
+  if (value.endsWith(".map")) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(value);
+
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function collectModuleOwners(library: ResolvedLibrary): Map<string, ResourceOwnerRef[]> {
@@ -304,6 +499,161 @@ function resolveDeferredFileUrl(baseUrl: string | undefined, filePath: string): 
   }
 
   return new URL(filePath, ensureTrailingSlash(baseUrl)).href;
+}
+
+function attachResolvedExternalCustomCodeSources(
+  resources: LaunchResource[],
+  sources: ResolvedExternalCustomCodeSource[]
+): LaunchResource[] {
+  if (sources.length === 0) {
+    return resources;
+  }
+
+  return resources.map((resource) => {
+    const resourceSources = sources.flatMap((source) =>
+      source.reference.targets
+        .filter((target) => target.kind === "external-custom-code-source")
+        .filter((target) => targetMatchesResource(target, resource))
+        .map((target) => ({
+          ...source,
+          target
+        }))
+    );
+
+    if (resourceSources.length === 0) {
+      return resource;
+    }
+
+    const raw = resourceSources.reduce<unknown>(
+      (currentRaw, source) => setValueAtPath(currentRaw, source.target.sourcePath, source.source),
+      resource.raw
+    );
+    const children = resourceSources.reduce(
+      (currentChildren, source) =>
+        patchChildExternalCustomCodeSource(
+          currentChildren,
+          source.target.sourcePath,
+          source.source
+        ),
+      resource.children
+    );
+    const fileIds = [
+      ...new Set([...resource.fileIds, ...resourceSources.map((source) => source.fileId)])
+    ];
+
+    return {
+      ...resource,
+      raw,
+      normalized: raw,
+      normalizedSource: JSON.stringify(raw),
+      contentFingerprint: fingerprintUnknown(raw),
+      children,
+      fileIds
+    };
+  });
+}
+
+function hasExternalCustomCodeTarget(reference: DeferredLaunchResourceReference): boolean {
+  return reference.targets.some((target) => target.kind === "external-custom-code-source");
+}
+
+function targetMatchesResource(
+  target: DeferredLaunchResourceTarget,
+  resource: LaunchResource
+): boolean {
+  if (target.owner.resourceType !== resource.identity.resourceType) {
+    return false;
+  }
+
+  if (target.owner.resourceId) {
+    return target.owner.resourceId === resource.identity.launchResourceId;
+  }
+
+  return target.owner.resourceName === resource.identity.name;
+}
+
+function setValueAtPath(value: unknown, path: string[], nextValue: unknown): unknown {
+  if (path.length === 0) {
+    return nextValue;
+  }
+
+  const [segment, ...remainingPath] = path;
+
+  if (Array.isArray(value)) {
+    const index = Number(segment);
+
+    if (!Number.isInteger(index) || index < 0 || index >= value.length) {
+      return value;
+    }
+
+    return value.map((item, itemIndex) =>
+      itemIndex === index ? setValueAtPath(item, remainingPath, nextValue) : item
+    );
+  }
+
+  const record = asRecord(value);
+
+  if (!record || segment === undefined || !(segment in record)) {
+    return value;
+  }
+
+  return {
+    ...record,
+    [segment]: setValueAtPath(record[segment], remainingPath, nextValue)
+  };
+}
+
+function patchChildExternalCustomCodeSource(
+  children: LaunchChildComponent[],
+  sourcePath: string[],
+  source: string
+): LaunchChildComponent[] {
+  const [collectionName, indexValue, ...componentPath] = sourcePath;
+  const componentType = componentTypeForCollection(collectionName);
+  const componentIndex = Number(indexValue);
+
+  if (!componentType || !Number.isInteger(componentIndex)) {
+    return children;
+  }
+
+  let seenComponentIndex = -1;
+
+  return children.map((child) => {
+    if (child.componentType !== componentType) {
+      return child;
+    }
+
+    seenComponentIndex += 1;
+
+    if (seenComponentIndex !== componentIndex) {
+      return child;
+    }
+
+    const raw = setValueAtPath(child.raw, componentPath, source);
+
+    return {
+      ...child,
+      raw,
+      normalized: raw,
+      normalizedSource: JSON.stringify(raw)
+    };
+  });
+}
+
+function componentTypeForCollection(
+  collectionName: string | undefined
+): LaunchChildComponent["componentType"] | undefined {
+  if (collectionName === "events") {
+    return "event";
+  }
+
+  if (collectionName === "conditions") {
+    return "condition";
+  }
+
+  if (collectionName === "actions") {
+    return "action";
+  }
 }
 
 function createDeferredResolvedFile(
@@ -385,6 +735,34 @@ function mergeOwners(existing: ResourceOwnerRef[], incoming: ResourceOwnerRef[])
   }
 
   return [...ownersByKey.values()];
+}
+
+function mergeReferences(
+  existing: DeferredLaunchResourceReference,
+  incoming: DeferredLaunchResourceReference
+): DeferredLaunchResourceReference {
+  return {
+    ...existing,
+    owners: mergeOwners(existing.owners, incoming.owners),
+    targets: mergeTargets(existing.targets, incoming.targets)
+  };
+}
+
+function mergeTargets(
+  existing: DeferredLaunchResourceTarget[],
+  incoming: DeferredLaunchResourceTarget[]
+): DeferredLaunchResourceTarget[] {
+  const targetsByKey = new Map(existing.map((target) => [targetKey(target), target]));
+
+  for (const target of incoming) {
+    targetsByKey.set(targetKey(target), target);
+  }
+
+  return [...targetsByKey.values()];
+}
+
+function targetKey(target: DeferredLaunchResourceTarget): string {
+  return JSON.stringify(target);
 }
 
 function ownerKey(owner: ResourceOwnerRef): string {

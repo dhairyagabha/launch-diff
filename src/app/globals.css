@@ -364,6 +364,15 @@ a {
   margin-top: 28px;
 }
 
+.compare-setup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
 .compare-button,
 .compare-primary-button,
 .compare-icon-button {
@@ -415,6 +424,20 @@ a {
 
 .compare-primary-button:hover {
   background: var(--button-primary-bgColor-hover, #1a7f37);
+}
+
+.compare-button:disabled,
+.compare-primary-button:disabled,
+.compare-icon-button:disabled {
+  color: var(--fgColor-muted, #656d76);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.compare-button:disabled:hover,
+.compare-primary-button:disabled:hover,
+.compare-icon-button:disabled:hover {
+  background: var(--button-default-bgColor-rest, #f6f8fa);
 }
 
 .compare-button:focus-visible,

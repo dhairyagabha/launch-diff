@@ -60,6 +60,54 @@ describe("deferred Launch resource resolver", () => {
     ).toHaveLength(4);
   });
 
+  it("fetches parser-confirmed external custom-code source URLs and attaches readable source", async () => {
+    const sourceUrl = "https://assets.example.test/rules/external-source.js";
+    const source = `_satellite._container={
+      buildInfo:{turbineVersion:"29.0.0",turbineBuildDate:"2026-06-01T00:00:00Z",buildDate:"2026-06-13T01:22:12Z",minified:true},
+      company:{orgId:"ABCDEF1234567890ABCDEF12@AdobeOrg",dynamicCdnEnabled:true},
+      property:{name:"Property",id:"PR12345678901234567890123456789012",settings:{undefinedVarsReturnEmpty:false,domains:["example.test"],ruleComponentSequencingEnabled:true}},
+      environment:{id:"EN12345678901234567890123456789012",stage:"development"},
+      dataElements:{},
+      extensions:{},
+      rules:[{id:"RL12345678901234567890123456789012",name:"External Source Rule",events:[],conditions:[],actions:[{
+        modulePath:"core/src/lib/actions/customCode.js",
+        settings:{source:${JSON.stringify(sourceUrl)},language:"javascript",isExternal:true},
+        timeout:2000,
+        delayNext:true
+      }]}]
+    };`;
+    const library = parseCurrentLaunchLibrary({
+      source,
+      canonicalUrl: "https://assets.example.test/launch/current.min.js"
+    });
+    const fetcher = new StaticFetcher({
+      [sourceUrl]: `function checkout(){return "external";}`
+    });
+    const result = await resolveDeferredLaunchResources({
+      library,
+      fetcher
+    });
+    const rule = result.library.resources.find(
+      (resource) => resource.identity.name === "External Source Rule"
+    );
+    const rawRule = rule?.raw as {
+      actions: Array<{ settings: { source: string; isExternal: boolean } }>;
+    };
+
+    expect(fetcher.requestedUrls).toEqual([sourceUrl]);
+    expect(result.references[0]?.sourcePath).toEqual(["actions", "0", "settings", "source"]);
+    expect(result.references[0]?.targets[0]).toMatchObject({
+      kind: "external-custom-code-source",
+      sourcePath: ["actions", "0", "settings", "source"]
+    });
+    expect(rawRule.actions[0]?.settings).toMatchObject({
+      source: `function checkout(){return "external";}`,
+      isExternal: true
+    });
+    expect(rule?.normalizedSource).toContain("function checkout(){return");
+    expect(rule?.fileIds).toEqual(["canonical", "deferred:1"]);
+  });
+
   it("keeps a known failed state for parser-confirmed deferred resources that cannot be loaded", async () => {
     const { library, manifest, fixtureRoot } = parseDeferredFixture();
     const fetcher = createLocalFixtureResourceFetcher(fixtureRoot, manifest);
@@ -110,6 +158,49 @@ class RecordingFetcher implements ResourceFetcher {
     this.requestedUrls.push(request.url);
 
     return this.delegate.fetchResource(request);
+  }
+}
+
+class StaticFetcher implements ResourceFetcher {
+  readonly requestedUrls: string[] = [];
+
+  constructor(private readonly sourcesByUrl: Record<string, string>) {}
+
+  async fetchResource(request: ResourceFetchRequest): Promise<ResourceFetchResult> {
+    this.requestedUrls.push(request.url);
+
+    const source = this.sourcesByUrl[request.url];
+
+    if (source === undefined) {
+      return {
+        ok: false,
+        failure: {
+          reason: "not-found",
+          retriable: false,
+          message: "No static source was registered for this URL."
+        },
+        metadata: {
+          requestedUrl: request.url,
+          fetchedAt: "1970-01-01T00:00:00.000Z",
+          attempts: 1
+        }
+      };
+    }
+
+    return {
+      ok: true,
+      body: {
+        kind: "text",
+        text: source
+      },
+      metadata: {
+        requestedUrl: request.url,
+        finalUrl: request.url,
+        fetchedAt: "1970-01-01T00:00:00.000Z",
+        attempts: 1,
+        byteLength: source.length
+      }
+    };
   }
 }
 

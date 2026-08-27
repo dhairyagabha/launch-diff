@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 import type {
   AnalysisProgress,
@@ -56,6 +57,17 @@ test.describe("comparison workspace acceptance", () => {
     await expect(page.getByLabel("Site")).toHaveValue("Example Site");
     await expect(page.getByLabel("Base environment")).toHaveValue("Production");
     await expect(page.getByLabel("Compare environment")).toHaveValue("Staging");
+
+    const configDownloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download config" }).click();
+    const configDownload = await configDownloadPromise;
+    const configDownloadPath = await configDownload.path();
+    const downloadedConfig = JSON.parse(await readFile(configDownloadPath!, "utf8")) as {
+      sites: Array<{ name: string }>;
+    };
+
+    expect(configDownload.suggestedFilename()).toBe("launchdiff.config.json");
+    expect(downloadedConfig.sites[0]?.name).toBe("Example Site");
 
     await page.getByRole("button", { name: "Compare libraries" }).click();
     await expect(page.getByRole("heading", { name: "Checkout Tracking Rule" })).toBeVisible();
@@ -168,7 +180,7 @@ test.describe("comparison workspace acceptance", () => {
     await page.getByRole("button", { name: "Copy" }).click();
     await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download" }).click();
+    await page.getByRole("button", { name: "Download", exact: true }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe("launchdiff-release-notes.md");
   });

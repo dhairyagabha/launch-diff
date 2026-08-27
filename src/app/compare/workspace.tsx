@@ -203,6 +203,16 @@ export function CompareWorkspace() {
     [comparison, selectedResourceKey, visibleGroups]
   );
   const selectedDiff = selectedComparison?.detailedDiff;
+  const downloadableConfig = useMemo(
+    () =>
+      buildDownloadableConfig({
+        setupMode,
+        baseUrl,
+        compareUrl,
+        config
+      }),
+    [baseUrl, compareUrl, config, setupMode]
+  );
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -539,11 +549,31 @@ export function CompareWorkspace() {
       return;
     }
 
-    const blob = new Blob([comparison.releaseNotes], { type: "text/markdown;charset=utf-8" });
+    downloadTextFile({
+      content: comparison.releaseNotes,
+      filename: "launchdiff-release-notes.md",
+      type: "text/markdown;charset=utf-8"
+    });
+  }
+
+  function downloadConfig() {
+    if (!downloadableConfig) {
+      return;
+    }
+
+    downloadTextFile({
+      content: `${JSON.stringify(downloadableConfig, null, 2)}\n`,
+      filename: "launchdiff.config.json",
+      type: "application/json;charset=utf-8"
+    });
+  }
+
+  function downloadTextFile(input: { content: string; filename: string; type: string }) {
+    const blob = new Blob([input.content], { type: input.type });
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = objectUrl;
-    link.download = "launchdiff-release-notes.md";
+    link.download = input.filename;
     link.click();
     URL.revokeObjectURL(objectUrl);
   }
@@ -579,6 +609,8 @@ export function CompareWorkspace() {
             setBaseEnvironmentName={setBaseEnvironmentName}
             setCompareEnvironmentName={setCompareEnvironmentName}
             onConfigFile={handleConfigFile}
+            canDownloadConfig={Boolean(downloadableConfig)}
+            onDownloadConfig={downloadConfig}
             onSubmit={handleSubmit}
             onSwap={() => {
               if (setupMode === "config") {
@@ -608,6 +640,8 @@ export function CompareWorkspace() {
               onCancel={cancelAnalysis}
               diagnosticCopyState={diagnosticCopyState}
               onCopyDiagnostics={() => void copyDiagnosticReport()}
+              canDownloadConfig={Boolean(downloadableConfig)}
+              onDownloadConfig={downloadConfig}
             />
             {error && <InlineBanner tone="danger" title="Analysis failed" description={error} />}
             {banner && (
@@ -707,6 +741,8 @@ function SetupPanel(props: {
   setBaseEnvironmentName: (value: string) => void;
   setCompareEnvironmentName: (value: string) => void;
   onConfigFile: (event: ChangeEvent<HTMLInputElement>) => void;
+  canDownloadConfig: boolean;
+  onDownloadConfig: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onSwap: () => void;
   error?: string;
@@ -868,10 +904,23 @@ function SetupPanel(props: {
           The comparator is intentionally conservative: plausible mismatches stay visible instead of
           being forced into tidy matches.
         </p>
-        <button className="compare-primary-button" type="submit" aria-label="Compare libraries">
-          <FileCodeIcon size={16} />
-          Compare
-        </button>
+        <div className="compare-setup__actions">
+          <button
+            className="compare-button"
+            type="button"
+            aria-label="Download config"
+            title="Download config"
+            disabled={!props.canDownloadConfig}
+            onClick={props.onDownloadConfig}
+          >
+            <DownloadIcon size={16} />
+            Config
+          </button>
+          <button className="compare-primary-button" type="submit" aria-label="Compare libraries">
+            <FileCodeIcon size={16} />
+            Compare
+          </button>
+        </div>
       </div>
     </form>
   );
@@ -890,6 +939,8 @@ function WorkspaceHeader(props: {
   onCancel: () => void;
   diagnosticCopyState: "idle" | "copied" | "failed";
   onCopyDiagnostics: () => void;
+  canDownloadConfig: boolean;
+  onDownloadConfig: () => void;
 }) {
   return (
     <header className="compare-header">
@@ -948,6 +999,17 @@ function WorkspaceHeader(props: {
             <button className="compare-button" type="button" onClick={props.onRefresh}>
               <SyncIcon size={14} />
               Refresh
+            </button>
+            <button
+              className="compare-button"
+              type="button"
+              aria-label="Download config"
+              title="Download config"
+              disabled={!props.canDownloadConfig}
+              onClick={props.onDownloadConfig}
+            >
+              <DownloadIcon size={14} />
+              Config
             </button>
             <button
               className="compare-button"
@@ -2251,6 +2313,43 @@ function applyDefaultConfigSelection(
   setters.setCompareEnvironmentName(
     site?.environments[1]?.name ?? site?.environments[0]?.name ?? ""
   );
+}
+
+function buildDownloadableConfig(input: {
+  setupMode: SetupMode;
+  baseUrl: string;
+  compareUrl: string;
+  config?: LaunchDiffConfig;
+}): LaunchDiffConfig | undefined {
+  if (input.setupMode === "config") {
+    return input.config;
+  }
+
+  const base = normalizeAnalysisUrl(input.baseUrl);
+  const compare = normalizeAnalysisUrl(input.compareUrl);
+
+  if (!base.ok || !compare.ok) {
+    return undefined;
+  }
+
+  return parseLaunchDiffConfig({
+    version: 1,
+    sites: [
+      {
+        name: "Current comparison",
+        environments: [
+          {
+            name: "Base",
+            url: base.url
+          },
+          {
+            name: "Compare",
+            url: compare.url
+          }
+        ]
+      }
+    ]
+  });
 }
 
 function pickInitialResource(comparison: ComparisonResult): ResourceComparison | undefined {
