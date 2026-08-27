@@ -355,6 +355,7 @@ function createExtensionResources(
 
     return createLaunchResource({
       resourceType: "extension",
+      launchResourceId: extensionName,
       name: asString(extension?.displayName) ?? extensionName,
       raw,
       children: createExtensionModuleChildren(extension),

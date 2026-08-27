@@ -161,7 +161,8 @@ export function comparisonCounts(
     if (
       resource.status === "added" ||
       resource.status === "removed" ||
-      resource.status === "modified"
+      resource.status === "modified" ||
+      resource.status === "unknown"
     ) {
       counts.changed += 1;
     }
@@ -180,7 +181,10 @@ export function reviewProgress(
 ): { reviewed: number; total: number } {
   const changed = comparison.resources.filter(
     (resource) =>
-      resource.status === "added" || resource.status === "removed" || resource.status === "modified"
+      resource.status === "added" ||
+      resource.status === "removed" ||
+      resource.status === "modified" ||
+      resource.status === "unknown"
   );
 
   return {

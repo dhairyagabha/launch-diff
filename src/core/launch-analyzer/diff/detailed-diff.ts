@@ -344,7 +344,7 @@ function comparisonToDetailedDiffInput(
 }
 
 function shouldGenerateDetailedDiff(comparison: ResourceComparison): boolean {
-  if (!isChangedStatus(comparison.status)) {
+  if (!isChangedStatus(comparison.status) && !isSideBySideReviewStatus(comparison)) {
     return false;
   }
 
@@ -356,6 +356,10 @@ function shouldGenerateDetailedDiff(comparison: ResourceComparison): boolean {
 
 function isChangedStatus(status: ChangeStatus): boolean {
   return status === "added" || status === "removed" || status === "modified";
+}
+
+function isSideBySideReviewStatus(comparison: ResourceComparison): boolean {
+  return comparison.status === "unknown" && Boolean(comparison.base && comparison.compare);
 }
 
 function resourceSource(resource: LaunchResource): string | undefined {

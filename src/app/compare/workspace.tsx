@@ -2386,16 +2386,16 @@ function applyDefaultConfigSelection(
 function pickInitialResource(comparison: ComparisonResult): ResourceComparison | undefined {
   return (
     comparison.resources.find((resource) => resource.status === "modified") ??
+    comparison.resources.find((resource) => resource.status === "unknown") ??
     comparison.resources.find(
       (resource) => resource.status === "added" || resource.status === "removed"
     ) ??
-    comparison.resources.find((resource) => resource.status === "unknown") ??
     comparison.resources[0]
   );
 }
 
 function isReviewableStatus(status: ResourceComparison["status"]): boolean {
-  return status === "added" || status === "removed" || status === "modified";
+  return status === "added" || status === "removed" || status === "modified" || status === "unknown";
 }
 
 function resourceTypeForComparison(comparison: ResourceComparison): string {

@@ -1,5 +1,6 @@
 import {
   compareResolvedLibraries,
+  createDetailedDiffQueue,
   parseCurrentLaunchLibrary,
   populateComparisonDetailedDiffs,
   resolveDeferredLaunchResources,
@@ -183,16 +184,16 @@ export class BrowserAnalysisOrchestrator {
     }
 
     this.emitProgress("comparing", 1, 1);
-    const changedResources = comparison.comparison.resources.filter((resource) =>
-      resource.status === "added" || resource.status === "removed" || resource.status === "modified"
-    );
-    this.emitProgress("preparing-diffs", 0, changedResources.length);
+    const detailedDiffQueue = createDetailedDiffQueue(comparison.comparison.resources, {
+      selectedResourceKey: input.selectedResourceKey
+    });
+    this.emitProgress("preparing-diffs", 0, detailedDiffQueue.length);
 
     const comparisonWithDiffs = populateComparisonDetailedDiffs(comparison.comparison, {
       selectedResourceKey: input.selectedResourceKey
     });
 
-    this.emitProgress("preparing-diffs", changedResources.length, changedResources.length);
+    this.emitProgress("preparing-diffs", detailedDiffQueue.length, detailedDiffQueue.length);
     this.emitProgress("complete", 1, 1);
 
     return {

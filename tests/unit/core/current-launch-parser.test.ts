@@ -120,6 +120,7 @@ describe("current Launch parser", () => {
     );
     expect(extension?.identity).toMatchObject({
       resourceType: "extension",
+      launchResourceId: "core",
       name: "Core"
     });
     expect(extension?.children).toHaveLength(2);

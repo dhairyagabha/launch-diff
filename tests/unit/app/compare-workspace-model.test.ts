@@ -71,19 +71,21 @@ describe("compare workspace model", () => {
   it("counts changes, impact, and viewed review progress", () => {
     const modified = comparison("rule", "RL-ONE", "modified");
     const added = comparison("extension", "EX-ADD", "added", { impacted: true });
+    const unknown = comparison("rule", "RL-REVIEW", "unknown");
     const unchanged = comparison("data-element", "DE-SAME", "unchanged");
-    const result = comparisonResult([modified, added, unchanged]);
+    const result = comparisonResult([modified, added, unknown, unchanged]);
 
     expect(comparisonCounts(result)).toMatchObject({
       modified: 1,
       added: 1,
+      unknown: 1,
       unchanged: 1,
       impacted: 1,
-      changed: 2
+      changed: 3
     });
     expect(reviewProgress(result, new Set([comparisonResourceKey(modified)]))).toEqual({
       reviewed: 1,
-      total: 2
+      total: 3
     });
   });
 

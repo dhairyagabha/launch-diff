@@ -134,6 +134,49 @@ describe("comparison engine", () => {
     expect(statuses).toEqual(["added", "removed"]);
   });
 
+  it("pairs exact-name added and removed resources for side-by-side recreated-resource review", () => {
+    const result = compareResolvedLibraries(
+      library({
+        resources: [
+          resource("rule", "RL-BASE", "Same Name Rule", "base-content", {
+            id: "RL-BASE",
+            name: "Same Name Rule",
+            actions: [{ settings: { source: "return 'base';" } }]
+          })
+        ]
+      }),
+      library({
+        resources: [
+          resource("rule", "RL-COMPARE", "Same Name Rule", "compare-content", {
+            id: "RL-COMPARE",
+            name: "Same Name Rule",
+            actions: [{ settings: { source: "return 'compare';" } }]
+          })
+        ]
+      })
+    );
+    const candidate = result.ok ? result.comparison.resources[0] : undefined;
+
+    expect(result.ok).toBe(true);
+    expect(result.ok ? result.comparison.resources : []).toHaveLength(1);
+    expect(candidate).toMatchObject({
+      status: "unknown",
+      match: {
+        method: "recreated-resource-candidate",
+        confidence: "ambiguous"
+      },
+      structuredChanges: [
+        {
+          kind: "unresolved",
+          path: ["identity"],
+          baseValue: "RL-BASE",
+          compareValue: "RL-COMPARE"
+        }
+      ],
+      detailedDiffState: "queued"
+    });
+  });
+
   it("marks unresolved external custom-code sources as unknown instead of a proven content change", () => {
     const baseRule = rule("External Rule", "old-url", {
       actions: [

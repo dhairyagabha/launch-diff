@@ -483,6 +483,10 @@ function isCompletenessComparisonWarning(warning: AnalysisWarning): boolean {
 function unknownReason(comparison: ResourceComparison): string {
   const unresolvedChange = comparison.structuredChanges.find((change) => change.kind === "unresolved");
 
+  if (unresolvedChange?.id.includes("recreated-resource-candidate")) {
+    return "because a removed resource and an added resource share the same name but have different Launch IDs";
+  }
+
   if (unresolvedChange?.id.includes("external-custom-code-unresolved")) {
     return "because external custom-code source content could not be resolved";
   }

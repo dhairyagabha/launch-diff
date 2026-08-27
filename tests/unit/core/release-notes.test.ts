@@ -138,6 +138,24 @@ describe("deterministic release notes", () => {
     `);
   });
 
+  it("summarizes exact-name recreated resources as needs-review candidates", () => {
+    const result = compareResolvedLibraries(
+      library({
+        resources: [rule("RL-BASE", "Shared Name Rule", "base")]
+      }),
+      library({
+        resources: [rule("RL-COMPARE", "Shared Name Rule", "compare")]
+      })
+    );
+    const notes = result.ok ? result.comparison.releaseNotes : "";
+
+    expect(notes).toContain(
+      'Rule "Shared Name Rule" needs review because a removed resource and an added resource share the same name but have different Launch IDs.'
+    );
+    expect(notes).not.toContain('Rule "Shared Name Rule" was added.');
+    expect(notes).not.toContain('Rule "Shared Name Rule" was removed.');
+  });
+
   it("includes incomplete-analysis warnings and excludes ordinary build metadata", () => {
     const result = compareResolvedLibraries(
       library({

@@ -81,6 +81,7 @@ export type MatchMethod =
   | "launch-child-id"
   | "exact-signature"
   | "file-id-fallback"
+  | "recreated-resource-candidate"
   | "fuzzy"
   | "unmatched";
 

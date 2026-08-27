@@ -91,8 +91,8 @@ export function compareResolvedLibraries(
 
   const baseResources = annotateDataElementReferences(base.resources);
   const compareResources = annotateDataElementReferences(compare.resources);
-  const rawComparisons = applyFileLevelFallback(
-    matchLaunchResources(baseResources, compareResources)
+  const rawComparisons = applyRecreatedResourceReviewPairing(
+    applyFileLevelFallback(matchLaunchResources(baseResources, compareResources))
   );
   const comparisons = applyComparisonSemantics(rawComparisons, {
     baseHasUnresolvedFiles: hasUnresolvedFiles(base),
@@ -158,6 +158,10 @@ function applyComparisonSemantics(
 
     if (comparison.status === "removed" && context.compareHasUnresolvedFiles) {
       return unknownBecauseCounterpartMayBeMissing(comparison, "compare");
+    }
+
+    if (comparison.status === "unknown") {
+      return comparison;
     }
 
     if (comparison.base && comparison.compare) {
@@ -294,6 +298,51 @@ function applyFileLevelFallback(comparisons: ResourceComparison[]): ResourceComp
   return retained;
 }
 
+function applyRecreatedResourceReviewPairing(
+  comparisons: ResourceComparison[]
+): ResourceComparison[] {
+  const retained: ResourceComparison[] = [];
+  const removedByNameKey = new Map<string, ResourceComparison[]>();
+  const addedByNameKey = new Map<string, ResourceComparison[]>();
+
+  for (const comparison of comparisons) {
+    const baseKey =
+      comparison.status === "removed" && comparison.base
+        ? recreatedResourceCandidateKey(comparison.base)
+        : undefined;
+    const compareKey =
+      comparison.status === "added" && comparison.compare
+        ? recreatedResourceCandidateKey(comparison.compare)
+        : undefined;
+
+    if (baseKey) {
+      removedByNameKey.set(baseKey, [...(removedByNameKey.get(baseKey) ?? []), comparison]);
+      continue;
+    }
+
+    if (compareKey) {
+      addedByNameKey.set(compareKey, [...(addedByNameKey.get(compareKey) ?? []), comparison]);
+      continue;
+    }
+
+    retained.push(comparison);
+  }
+
+  for (const nameKey of new Set([...removedByNameKey.keys(), ...addedByNameKey.keys()])) {
+    const removed = removedByNameKey.get(nameKey) ?? [];
+    const added = addedByNameKey.get(nameKey) ?? [];
+
+    if (removed.length === 1 && added.length === 1) {
+      retained.push(createRecreatedResourceReviewComparison(removed[0]!.base!, added[0]!.compare!));
+      continue;
+    }
+
+    retained.push(...removed, ...added);
+  }
+
+  return retained;
+}
+
 function addMatchedResourceStructuredChanges(comparison: ResourceComparison): ResourceComparison {
   const base = comparison.base!;
   const compare = comparison.compare!;
@@ -392,6 +441,36 @@ function createFileLevelFallbackComparison(
   };
 }
 
+function createRecreatedResourceReviewComparison(
+  base: LaunchResource,
+  compare: LaunchResource
+): ResourceComparison {
+  return {
+    base,
+    compare,
+    status: "unknown",
+    match: {
+      method: "recreated-resource-candidate",
+      confidence: "ambiguous",
+      notes: [
+        "Exact type/name pairing was used only to provide side-by-side review; the Launch resource IDs are different and were not treated as the same ID."
+      ]
+    },
+    structuredChanges: [
+      {
+        id: `${resourceGraphId(compare)}:recreated-resource-candidate`,
+        kind: "unresolved",
+        path: ["identity"],
+        description:
+          "A removed Base resource and added Compare resource share the same type and name, but their Launch resource IDs differ. Review them side by side as a possible recreated resource.",
+        baseValue: base.identity.launchResourceId,
+        compareValue: compare.identity.launchResourceId
+      }
+    ],
+    detailedDiffState: "not-started"
+  };
+}
+
 function attachImpact(
   comparison: ResourceComparison,
   impactsByResourceId: Map<string, DependencyImpactPath[]>
@@ -470,6 +549,23 @@ function fileLevelFallbackFileId(resource: LaunchResource): string | undefined {
   }
 
   return resource.fileIds[0];
+}
+
+function recreatedResourceCandidateKey(resource: LaunchResource): string | undefined {
+  if (resource.identity.resourceType === "runtime" || resource.identity.resourceType === "unmapped") {
+    return undefined;
+  }
+
+  const name = resource.identity.name?.trim();
+
+  if (!name) {
+    return undefined;
+  }
+
+  return JSON.stringify({
+    resourceType: resource.identity.resourceType,
+    name
+  });
 }
 
 function hasUnresolvedFiles(library: ResolvedLibrary): boolean {
