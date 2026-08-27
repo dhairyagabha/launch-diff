@@ -214,6 +214,7 @@ function createRuntimeResource(container: Record<string, unknown>, fileId: strin
     launchResourceId: asString(property?.id),
     name: "Library / Runtime Configuration",
     raw,
+    normalized: createComparableRuntimeConfiguration(raw),
     fileIds: [fileId],
     metadata: {
       propertyId: asString(property?.id),
@@ -453,6 +454,7 @@ function createLaunchResource(input: {
   launchResourceId?: string;
   name?: string;
   raw: unknown;
+  normalized?: unknown;
   normalizedSource?: string;
   children?: LaunchChildComponent[];
   fileIds: string[];
@@ -460,21 +462,44 @@ function createLaunchResource(input: {
   warnings?: string[];
 }): LaunchResource {
   return {
+    ...createLaunchResourceContent(input.raw, input.normalized, input.normalizedSource),
     identity: {
       resourceType: input.resourceType,
       ...(input.launchResourceId ? { launchResourceId: input.launchResourceId } : {}),
       ...(input.name ? { name: input.name } : {})
     },
-    raw: input.raw,
-    normalized: input.raw,
-    normalizedSource: input.normalizedSource ?? JSON.stringify(input.raw),
-    contentFingerprint: fingerprintUnknown(input.raw),
     children: input.children ?? [],
     fileIds: input.fileIds,
     dataElementReferences: [],
     metadata: input.metadata ?? {},
     warnings: input.warnings ?? []
   };
+}
+
+function createLaunchResourceContent(
+  raw: unknown,
+  normalized = raw,
+  normalizedSource = JSON.stringify(normalized)
+) {
+  return {
+    raw,
+    normalized,
+    normalizedSource,
+    contentFingerprint: fingerprintUnknown(normalized)
+  };
+}
+
+function createComparableRuntimeConfiguration(raw: {
+  buildInfo: unknown;
+  company: unknown;
+  environment: unknown;
+  property: unknown;
+}): Record<string, unknown> {
+  return compactRecord({
+    buildInfo: omitRecordKeys(raw.buildInfo, ["buildDate", "minified"]),
+    company: raw.company,
+    property: raw.property
+  });
 }
 
 function createResolvedLibrary(input: {
@@ -671,6 +696,36 @@ function staticPropertyKey(property: t.ObjectMethod | t.ObjectProperty): string 
   }
 
   return undefined;
+}
+
+function omitRecordKeys(value: unknown, keys: string[]): unknown {
+  const record = asRecord(value);
+
+  if (!record) {
+    return value;
+  }
+
+  const omittedKeys = new Set(keys);
+
+  return Object.fromEntries(
+    Object.entries(record).filter(([key]) => !omittedKeys.has(key))
+  );
+}
+
+function compactRecord(record: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(record).filter(([, value]) => {
+      if (value === undefined) {
+        return false;
+      }
+
+      if (isRecord(value) && Object.keys(value).length === 0) {
+        return false;
+      }
+
+      return true;
+    })
+  );
 }
 
 function isContainerMemberExpression(node: t.Node): boolean {

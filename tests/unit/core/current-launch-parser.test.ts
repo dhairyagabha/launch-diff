@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { detectCurrentLaunchFormat, parseCurrentLaunchLibrary } from "@/core/launch-analyzer";
+import {
+  compareResolvedLibraries,
+  detectCurrentLaunchFormat,
+  parseCurrentLaunchLibrary
+} from "@/core/launch-analyzer";
 import { loadSanitizedFixtureManifest, sanitizedFixtureRoot } from "../../support/fixtures";
 
 const require = createRequire(import.meta.url);
@@ -120,6 +124,36 @@ describe("current Launch parser", () => {
     expect(extension?.children).toHaveLength(2);
   });
 
+  it("does not classify environment-only runtime metadata as a change", () => {
+    const base = parseCurrentLaunchLibrary({
+      source: runtimeOnlySource({
+        buildDate: "2026-08-20T22:03:04Z",
+        environmentId: "ENeecb77f1160a4928a492ff040f7110c7",
+        environmentStage: "production"
+      }),
+      canonicalUrl: "https://assets.example.test/launch/production.js"
+    });
+    const compare = parseCurrentLaunchLibrary({
+      source: runtimeOnlySource({
+        buildDate: "2026-08-25T22:35:22Z",
+        environmentId: "ENe956028acf6f4129a803968d774515c2",
+        environmentStage: "development"
+      }),
+      canonicalUrl: "https://assets.example.test/launch/development.js"
+    });
+    const result = compareResolvedLibraries(base, compare);
+    const runtimeComparison = result.ok
+      ? result.comparison.resources.find(
+          (comparison) => comparison.compare?.identity.resourceType === "runtime"
+        )
+      : undefined;
+
+    expect(result.ok).toBe(true);
+    expect(runtimeComparison?.status).toBe("unchanged");
+    expect(runtimeComparison?.compare?.normalizedSource).not.toContain("ENe956028");
+    expect(runtimeComparison?.compare?.normalizedSource).not.toContain("2026-08-25T22:35:22Z");
+  });
+
   it("preserves unsupported container properties as unmapped resources", () => {
     const source = `_satellite._container={
       buildInfo:{turbineVersion:"1.0.0",turbineBuildDate:"2026-01-01T00:00:00Z",buildDate:"2026-01-02T00:00:00Z"},
@@ -172,6 +206,22 @@ function readFixtureSource(): string {
     ),
     "utf8"
   );
+}
+
+function runtimeOnlySource(input: {
+  buildDate: string;
+  environmentId: string;
+  environmentStage: string;
+}): string {
+  return `_satellite._container={
+    buildInfo:{turbineVersion:"29.1.0",turbineBuildDate:"2026-06-04T21:23:22Z",buildDate:${JSON.stringify(input.buildDate)},minified:true},
+    company:{orgId:"ABCDEF1234567890ABCDEF12@AdobeOrg",dynamicCdnEnabled:false},
+    property:{name:"Thermofisher.com",id:"PR12345678901234567890123456789012",settings:{undefinedVarsReturnEmpty:false,domains:["thermofisher.com"],ruleComponentSequencingEnabled:true}},
+    environment:{id:${JSON.stringify(input.environmentId)},stage:${JSON.stringify(input.environmentStage)}},
+    rules:[],
+    dataElements:{},
+    extensions:{}
+  };`;
 }
 
 function countResources(
