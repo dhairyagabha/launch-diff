@@ -1,5 +1,15 @@
 import Image from "next/image";
 import Link from "next/link";
+import {
+  ArrowRightIcon,
+  CodeReviewIcon,
+  DatabaseIcon,
+  FileCodeIcon,
+  GitCompareIcon,
+  GlobeIcon,
+  ShieldCheckIcon,
+  WorkflowIcon
+} from "@primer/octicons-react";
 
 const repositoryUrl = process.env.NEXT_PUBLIC_GITHUB_REPOSITORY_URL;
 
@@ -30,46 +40,76 @@ const storySections = [
   }
 ];
 
-const reviewPrinciples = [
+const workflowSteps = [
   {
-    title: "Artifact first",
-    body: "The deployed library is the source of truth; readable sources only help reviewers inspect the same deployed change."
+    phase: "Input",
+    title: "Add public library URLs.",
+    body: "Use deployed Adobe Tags URLs or the sample config. Non-minified environment URLs help readability; deployed artifacts stay authoritative.",
+    icon: GlobeIcon
   },
   {
-    title: "Conservative matching",
-    body: "Top-level Rules, Data Elements, and Extensions match by Launch identity rather than by fuzzy names."
+    phase: "Resolve",
+    title: "Resolve the resource graph.",
+    body: "Only parser-confirmed Launch resources are followed. External custom code and fetch states stay visible.",
+    icon: WorkflowIcon
   },
   {
-    title: "Explicit uncertainty",
-    body: "Failed, skipped, unresolved, and unsupported resources remain visible instead of being smoothed out."
+    phase: "Compare",
+    title: "Compare matched resources.",
+    body: "Top-level resources match by Launch identity. Formatting improves readability without hiding executable changes.",
+    icon: GitCompareIcon
+  },
+  {
+    phase: "Review",
+    title: "Review the evidence.",
+    body: "Use split diffs, resolved files, dependency impact, and deterministic notes with uncertainty kept visible.",
+    icon: CodeReviewIcon
   }
 ];
 
 const trustBoundaries = [
   {
-    title: "Public fetch boundary",
+    label: "Fetch boundary",
+    title: "Public-only fetches",
+    summary:
+      "LaunchDiff reads public deployed libraries and parser-confirmed Launch resources; it is not a generic crawler or Adobe API client.",
     items: [
       "No Adobe authentication",
       "No private crawling",
       "Only parser-confirmed Launch resources are followed"
-    ]
+    ],
+    icon: GlobeIcon
   },
   {
-    title: "Static analysis boundary",
+    label: "Execution boundary",
+    title: "Static source review",
+    summary:
+      "Downloaded JavaScript is parsed and formatted as data. Execution stays outside the analysis path.",
     items: [
-      "No downloaded JavaScript execution",
+      "No eval or VM execution",
       "No AI dependency",
       "No source-map interpretation"
-    ]
+    ],
+    icon: ShieldCheckIcon
   },
   {
-    title: "Storage boundary",
+    label: "Storage boundary",
+    title: "Session-scoped output",
+    summary:
+      "Review material stays ephemeral: source, URLs, diffs, and notes are not durably stored by the app.",
     items: [
       "No accounts or database",
       "No persistent source storage",
       "Only minimal aggregate usage measurement"
-    ]
+    ],
+    icon: DatabaseIcon
   }
+];
+
+const trustFlow = [
+  { label: "Public CDN files", icon: GlobeIcon },
+  { label: "Static parser", icon: FileCodeIcon },
+  { label: "Reviewer workspace", icon: CodeReviewIcon }
 ];
 
 const documentationItems = [
@@ -140,21 +180,31 @@ export default function HomePage() {
       <section id="how-it-works" className="landing-intro" aria-labelledby="intro-title">
         <div className="landing-intro__inner">
           <div className="landing-intro__copy">
-            <p className="landing-eyebrow">How it works</p>
-            <h2 id="intro-title">LaunchDiff favors explicit evidence over tidy guesses.</h2>
+            <div className="landing-section-heading">
+              <p className="landing-eyebrow">How it works</p>
+              <h2 id="intro-title">From public URLs to reviewable evidence.</h2>
+            </div>
             <p>
-              The analyzer fetches canonical public URLs, follows only parser-confirmed Launch
-              resources, pretty-prints deployable JavaScript for review, and keeps every plausible
-              change visible until the deployed artifacts prove otherwise.
+              LaunchDiff turns two deployed library artifacts into a static review package: resolved
+              resources, readable diffs, dependency impact, and release notes that explain what
+              changed without guessing past the evidence.
             </p>
           </div>
-          <ol className="landing-principles">
-            {reviewPrinciples.map((principle) => (
-              <li key={principle.title}>
-                <strong>{principle.title}</strong>
-                <span>{principle.body}</span>
-              </li>
-            ))}
+          <ol className="landing-workflow">
+            {workflowSteps.map((step) => {
+              const StepIcon = step.icon;
+
+              return (
+                <li key={step.title}>
+                  <div className="landing-workflow__meta">
+                    <span>{step.phase}</span>
+                    <StepIcon size={20} aria-hidden="true" />
+                  </div>
+                  <strong>{step.title}</strong>
+                  <p>{step.body}</p>
+                </li>
+              );
+            })}
           </ol>
         </div>
       </section>
@@ -224,24 +274,55 @@ export default function HomePage() {
       <section id="privacy" className="landing-trust" aria-labelledby="trust-title">
         <div className="landing-trust__inner">
           <div className="landing-trust__heading">
-            <p className="landing-eyebrow">Trust model</p>
-            <h2 id="trust-title">Built for public deployed artifacts, not private storage.</h2>
+            <div className="landing-section-heading">
+              <p className="landing-eyebrow">Trust model</p>
+              <h2 id="trust-title">Clear boundaries for public-library review.</h2>
+            </div>
             <p>
-              LaunchDiff keeps the boundary visible: it fetches public library files, analyzes them
-              statically, and avoids durable storage for source, URLs, diffs, or notes.
+              LaunchDiff keeps its responsibilities narrow: fetch public artifacts, analyze them
+              statically, and hand the reviewer a transparent comparison without storing review
+              material long term.
             </p>
           </div>
-          <div className="landing-trust__matrix">
-            {trustBoundaries.map((boundary) => (
-              <article key={boundary.title}>
-                <h3>{boundary.title}</h3>
-                <ul>
-                  {boundary.items.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </article>
-            ))}
+          <div className="landing-trust__visual">
+            <div className="landing-trust__flow" aria-hidden="true">
+              {trustFlow.map((step, index) => {
+                const FlowIcon = step.icon;
+
+                return (
+                  <div className="landing-trust__flow-group" key={step.label}>
+                    <span>
+                      <FlowIcon size={18} />
+                      {step.label}
+                    </span>
+                    {index < trustFlow.length - 1 ? (
+                      <ArrowRightIcon className="landing-trust__arrow" size={18} />
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="landing-trust__matrix">
+              {trustBoundaries.map((boundary) => {
+                const BoundaryIcon = boundary.icon;
+
+                return (
+                  <article key={boundary.title}>
+                    <div className="landing-trust__card-heading">
+                      <BoundaryIcon size={20} aria-hidden="true" />
+                      <span>{boundary.label}</span>
+                    </div>
+                    <h3>{boundary.title}</h3>
+                    <p>{boundary.summary}</p>
+                    <ul>
+                      {boundary.items.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </article>
+                );
+              })}
+            </div>
           </div>
         </div>
       </section>
