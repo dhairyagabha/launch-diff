@@ -1,12 +1,19 @@
 import Image from "next/image";
 import Link from "next/link";
 import {
+  AlertIcon,
   ArrowRightIcon,
+  BookIcon,
   CodeReviewIcon,
   DatabaseIcon,
+  DiffModifiedIcon,
   FileCodeIcon,
+  FileDiffIcon,
+  FileDirectoryIcon,
   GitCompareIcon,
   GlobeIcon,
+  NoteIcon,
+  PackageDependentsIcon,
   ShieldCheckIcon,
   WorkflowIcon
 } from "@primer/octicons-react";
@@ -19,6 +26,9 @@ const storySections = [
     eyebrow: "Deployed changes",
     title: "See every deployed change.",
     body: "LaunchDiff treats the exact CDN artifact as authoritative, resolves parser-confirmed deferred and external custom-code resources, and keeps split diffs focused on the code that actually shipped.",
+    badge: "Split diff",
+    detail: "External code resolved",
+    icon: FileDiffIcon,
     image: "/landing/workspace-split-diff.webp",
     alt: "Actual LaunchDiff comparison workspace showing a split diff with rule and data element resources."
   },
@@ -27,6 +37,9 @@ const storySections = [
     eyebrow: "Dependency impact",
     title: "Understand downstream impact.",
     body: "Data Element references from percent tokens and literal getVar calls are traced into direct and transitive paths, so unchanged resources can still be flagged as impacted without being mislabeled as modified.",
+    badge: "Dependency graph",
+    detail: "Direct and transitive",
+    icon: PackageDependentsIcon,
     image: "/landing/workspace-impacted-resources.webp",
     alt: "Actual LaunchDiff impacted resources view showing a transitive Data Element dependency."
   },
@@ -35,6 +48,9 @@ const storySections = [
     eyebrow: "Resolved library",
     title: "Validate the complete resource graph.",
     body: "Canonical and deferred resources end in explicit states: resolved, failed, skipped by a documented limit, or unsupported. Warnings and retry paths stay visible instead of disappearing into a clean-looking diff.",
+    badge: "Fetch states",
+    detail: "Resolved or explicit",
+    icon: FileDirectoryIcon,
     image: "/landing/workspace-resolved-files.webp",
     alt: "Actual LaunchDiff resolved files view showing resolved and failed fetched resources."
   }
@@ -114,16 +130,40 @@ const trustFlow = [
 
 const documentationItems = [
   {
+    label: "Setup",
     title: "Compare setup",
-    body: "Use public Adobe Tags library URLs or a saved config. Non-minified environment URLs make review easier, but deployed artifacts still drive classification."
+    body: "Use public Adobe Tags library URLs or a saved config. Non-minified environment URLs make review easier, but deployed artifacts still drive classification.",
+    icon: GlobeIcon
   },
   {
+    label: "Review",
     title: "Diff review",
-    body: "Changed and needs-review resources open in a split diff with resolved external code, readable formatting, and explicit unresolved states."
+    body: "Changed and needs-review resources open in a split diff with resolved external code, readable formatting, and explicit unresolved states.",
+    icon: CodeReviewIcon
   },
   {
+    label: "Output",
     title: "Release notes",
-    body: "Deterministic summaries group direct changes, recreated-resource candidates, Data Element references, dependency impact, and analysis warnings."
+    body: "Deterministic summaries group direct changes, recreated-resource candidates, Data Element references, dependency impact, and analysis warnings.",
+    icon: NoteIcon
+  }
+];
+
+const releaseNoteHighlights = [
+  {
+    title: "Changed resources",
+    body: "Rules, Data Elements, and Extensions are grouped by resource type with recreated-resource candidates called out for review.",
+    icon: DiffModifiedIcon
+  },
+  {
+    title: "Dependency impact",
+    body: "Data Element reference changes list the resources they can affect instead of turning every dependency into a modified resource.",
+    icon: PackageDependentsIcon
+  },
+  {
+    title: "Analysis warnings",
+    body: "Fetch failures, unsupported resources, and safety limits stay attached to the notes when the comparison is not fully complete.",
+    icon: AlertIcon
   }
 ];
 
@@ -209,66 +249,130 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="features" className="landing-stories" aria-label="Product capabilities">
-        {storySections.map((section, index) => (
-          <article
-            key={section.id}
-            className="landing-story"
-            data-reverse={index % 2 === 1 ? "true" : "false"}
-          >
-            <div className="landing-story__inner">
-              <div className="landing-story__copy">
-                <p className="landing-eyebrow">{section.eyebrow}</p>
-                <h2>{section.title}</h2>
-                <p>{section.body}</p>
-              </div>
-              <Image
-                className="landing-story__visual"
-                src={section.image}
-                alt={section.alt}
-                width={1280}
-                height={720}
-                sizes="(max-width: 980px) calc(100vw - 36px), 640px"
-                loading="eager"
-              />
+      <section id="features" className="landing-stories" aria-labelledby="features-title">
+        <div className="landing-stories__inner">
+          <div className="landing-stories__heading">
+            <div className="landing-section-heading">
+              <p className="landing-eyebrow">Review surfaces</p>
+              <h2 id="features-title">Everything important stays inspectable.</h2>
             </div>
-          </article>
-        ))}
+            <p>
+              The workspace keeps the real comparison artifacts close together: changed code,
+              dependency impact, and fetch completeness are visible before anyone writes release
+              notes or approves a publish.
+            </p>
+          </div>
+          <div className="landing-feature-grid">
+            {storySections.map((section) => {
+              const SectionIcon = section.icon;
+
+              return (
+                <article key={section.id} className="landing-feature-card">
+                  <div className="landing-feature-card__toolbar">
+                    <span>
+                      <SectionIcon size={18} aria-hidden="true" />
+                      {section.badge}
+                    </span>
+                    <span>{section.detail}</span>
+                  </div>
+                  <Image
+                    className="landing-feature-card__visual"
+                    src={section.image}
+                    alt={section.alt}
+                    width={1280}
+                    height={720}
+                    sizes="(max-width: 720px) calc(100vw - 36px), (max-width: 1180px) 50vw, 360px"
+                    loading="eager"
+                  />
+                  <div className="landing-feature-card__copy">
+                    <p className="landing-eyebrow">{section.eyebrow}</p>
+                    <h3>{section.title}</h3>
+                    <p>{section.body}</p>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
       </section>
 
       <section className="landing-notes" aria-labelledby="notes-title">
-        <div className="landing-section-grid">
-          <div>
-            <p className="landing-eyebrow">Release notes</p>
-            <h2 id="notes-title">Review summaries that stay readable.</h2>
+        <div className="landing-notes__inner">
+          <div className="landing-notes__copy">
+            <div className="landing-section-heading">
+              <p className="landing-eyebrow">Release notes</p>
+              <h2 id="notes-title">Readable summaries without invented meaning.</h2>
+            </div>
+            <p>
+              Notes are deterministic and reviewer-focused. They summarize direct changes, Data
+              Element reference updates, dependency impact, and analysis warnings without AI,
+              source-map interpretation, or unsupported business claims.
+            </p>
           </div>
-          <p>
-            LaunchDiff summarizes direct changes, Data Element reference updates, dependency impact,
-            and analysis warnings in deterministic Markdown without AI, unsupported business claims,
-            or source-map interpretation.
-          </p>
+          <div className="landing-notes__panel" aria-label="Release note structure">
+            <div className="landing-panel-toolbar">
+              <span>
+                <NoteIcon size={18} aria-hidden="true" />
+                Deterministic Markdown
+              </span>
+              <span>No AI summary</span>
+            </div>
+            <ol>
+              {releaseNoteHighlights.map((item) => {
+                const ItemIcon = item.icon;
+
+                return (
+                  <li key={item.title}>
+                    <ItemIcon size={18} aria-hidden="true" />
+                    <div>
+                      <strong>{item.title}</strong>
+                      <p>{item.body}</p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
         </div>
       </section>
 
       <section id="documentation" className="landing-documentation" aria-labelledby="docs-title">
-        <div className="landing-section-grid">
-          <div>
-            <p className="landing-eyebrow">Documentation</p>
-            <h2 id="docs-title">The review path is visible before analysis starts.</h2>
+        <div className="landing-documentation__inner">
+          <div className="landing-documentation__heading">
+            <div className="landing-section-heading">
+              <p className="landing-eyebrow">Documentation</p>
+              <h2 id="docs-title">The review path is visible before analysis starts.</h2>
+            </div>
+            <p>
+              A compact guide covers setup, review flow, and output semantics, so teams know what
+              LaunchDiff will and will not infer before pasting a URL.
+            </p>
           </div>
-          <p>
-            A compact guide covers setup, review flow, and output semantics, so teams know what
-            LaunchDiff will and will not infer before pasting a URL.
-          </p>
+          <div className="landing-doc-shell">
+            <div className="landing-doc-tabs" aria-label="Documentation topics">
+              {documentationItems.map((item) => (
+                <span key={item.label}>{item.label}</span>
+              ))}
+            </div>
+            <ol className="landing-doc-list">
+              {documentationItems.map((item) => {
+                const ItemIcon = item.icon;
+
+                return (
+                  <li key={item.title}>
+                    <div className="landing-doc-list__icon">
+                      <ItemIcon size={18} aria-hidden="true" />
+                    </div>
+                    <div>
+                      <strong>{item.title}</strong>
+                      <span>{item.body}</span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
         </div>
-        <ol className="landing-doc-list">
-          {documentationItems.map((item) => (
-            <li key={item.title}>
-              <strong>{item.title}</strong>
-              <span>{item.body}</span>
-            </li>
-          ))}
-        </ol>
       </section>
 
       <section id="privacy" className="landing-trust" aria-labelledby="trust-title">
@@ -328,12 +432,27 @@ export default function HomePage() {
       </section>
 
       <section className="landing-final" aria-labelledby="final-title">
-        <LaunchDiffMark decorative />
-        <h2 id="final-title">Know exactly what changed before you publish.</h2>
-        <Link className="landing-primary-cta" href="/compare" aria-label="Compare libraries">
-          <span className="landing-copy-desktop">Compare</span>
-          <span className="landing-copy-mobile">Use desktop</span>
-        </Link>
+        <div className="landing-final__inner">
+          <div className="landing-final__copy">
+            <LaunchDiffMark decorative />
+            <div>
+              <p className="landing-eyebrow">Ready for review</p>
+              <h2 id="final-title">Know exactly what changed before you publish.</h2>
+              <p>Bring the deployed artifact, the readable diff, and the impact trail into one review.</p>
+            </div>
+          </div>
+          <div className="landing-final__actions">
+            <Link className="landing-primary-cta" href="/compare" aria-label="Compare libraries">
+              <span className="landing-copy-desktop">Compare</span>
+              <span className="landing-copy-mobile">Use desktop</span>
+              <ArrowRightIcon size={16} aria-hidden="true" />
+            </Link>
+            <a className="landing-secondary-cta" href="#documentation">
+              <BookIcon size={16} aria-hidden="true" />
+              Docs
+            </a>
+          </div>
+        </div>
       </section>
     </main>
   );

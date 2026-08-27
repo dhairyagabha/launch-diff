@@ -11,10 +11,10 @@ test.describe("landing page", () => {
     await expect(page.getByRole("link", { name: "LaunchDiff home" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Documentation" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Compare libraries" }).first()).toBeVisible();
-    await expect(page.locator(".landing-story__visual")).toHaveCount(3);
+    await expect(page.locator(".landing-feature-card__visual")).toHaveCount(3);
     await expect
       .poll(async () =>
-        page.locator(".landing-story__visual").evaluateAll((images) =>
+        page.locator(".landing-feature-card__visual").evaluateAll((images) =>
           images.every((image) => {
             const screenshot = image as HTMLImageElement;
             return screenshot.complete && screenshot.naturalWidth > 0 && screenshot.naturalHeight > 0;
@@ -22,7 +22,7 @@ test.describe("landing page", () => {
         )
       )
       .toBe(true);
-    const screenshotRatios = await page.locator(".landing-story__visual").evaluateAll((images) =>
+    const screenshotRatios = await page.locator(".landing-feature-card__visual").evaluateAll((images) =>
       images.map((image) => {
         const screenshot = image as HTMLImageElement;
         const bounds = screenshot.getBoundingClientRect();
@@ -41,6 +41,7 @@ test.describe("landing page", () => {
     await expect(page.getByRole("heading", { name: "See every deployed change." })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Understand downstream impact." })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Validate the complete resource graph." })).toBeVisible();
+    await expect(page.getByText("Deterministic Markdown")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "The review path is visible before analysis starts." })
     ).toBeVisible();
