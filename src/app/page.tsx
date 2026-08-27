@@ -13,6 +13,7 @@ import {
   FileDirectoryIcon,
   GitCompareIcon,
   GlobeIcon,
+  MarkGithubIcon,
   NoteIcon,
   PackageDependentsIcon,
   RowsIcon,
@@ -196,6 +197,15 @@ const releaseNoteHighlights = [
     icon: AlertIcon
   }
 ];
+
+const footerLinks = [
+  { label: "How it works", href: "#how-it-works" },
+  { label: "Review surfaces", href: "#features" },
+  { label: "Documentation", href: "#documentation" },
+  { label: "Trust model", href: "#privacy" }
+];
+
+const footerSignals = ["Public URLs only", "Static analysis", "No persistent review storage"];
 
 export default function HomePage() {
   return (
@@ -437,23 +447,31 @@ export default function HomePage() {
             </p>
           </div>
           <div className="landing-doc-shell">
-            <div className="landing-doc-sidebar" aria-label="Documentation topics">
-              <div className="landing-doc-sidebar__header">
+            <div className="landing-panel-toolbar">
+              <span>
                 <BookIcon size={18} aria-hidden="true" />
-                Docs
-              </div>
-              {documentationItems.map((item) => (
-                <span key={item.label}>{item.label}</span>
-              ))}
+                README.md
+              </span>
+              <span>Start to finish guide</span>
             </div>
-            <div className="landing-doc-readme">
-              <div className="landing-panel-toolbar">
-                <span>
-                  <BookIcon size={18} aria-hidden="true" />
-                  README.md
-                </span>
-                <span>Public review guide</span>
-              </div>
+            <ol className="landing-doc-timeline" aria-label="Documentation timeline">
+              {documentationItems.map((item, index) => {
+                const ItemIcon = item.icon;
+
+                return (
+                  <li key={item.label}>
+                    <div className="landing-doc-timeline__marker">
+                      <span>{index + 1}</span>
+                    </div>
+                    <div className="landing-doc-timeline__body">
+                      <ItemIcon size={18} aria-hidden="true" />
+                      <strong>{item.label}</strong>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+            <div className="landing-doc-readme" aria-label="Documentation details">
               <ol className="landing-doc-list">
                 {documentationItems.map((item) => {
                   const ItemIcon = item.icon;
@@ -532,17 +550,17 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="landing-final" aria-labelledby="final-title">
-        <div className="landing-final__inner">
-          <div className="landing-final__copy">
+      <footer className="landing-footer" aria-labelledby="footer-title" role="contentinfo">
+        <div className="landing-footer__inner">
+          <div className="landing-footer__primary">
             <LaunchDiffMark decorative />
             <div>
               <p className="landing-eyebrow">Ready for review</p>
-              <h2 id="final-title">Know exactly what changed before you publish.</h2>
+              <h2 id="footer-title">Know exactly what changed before you publish.</h2>
               <p>Bring the deployed artifact, the readable diff, and the impact trail into one review.</p>
             </div>
           </div>
-          <div className="landing-final__actions">
+          <div className="landing-footer__actions">
             <Link className="landing-primary-cta" href="/compare" aria-label="Compare libraries">
               <span className="landing-copy-desktop">Compare</span>
               <span className="landing-copy-mobile">Use desktop</span>
@@ -553,8 +571,29 @@ export default function HomePage() {
               Docs
             </a>
           </div>
+          <nav className="landing-footer__nav" aria-label="Footer navigation">
+            {footerLinks.map((link) => (
+              <a key={link.href} href={link.href}>
+                {link.label}
+              </a>
+            ))}
+            {repositoryUrl ? (
+              <a href={repositoryUrl}>
+                <MarkGithubIcon size={16} aria-hidden="true" />
+                GitHub
+              </a>
+            ) : null}
+          </nav>
+          <ul className="landing-footer__signals" aria-label="Review boundaries">
+            {footerSignals.map((signal) => (
+              <li key={signal}>
+                <CheckCircleIcon size={14} aria-hidden="true" />
+                {signal}
+              </li>
+            ))}
+          </ul>
         </div>
-      </section>
+      </footer>
     </main>
   );
 }

@@ -11,7 +11,9 @@ test.describe("landing page", () => {
     await page.locator('label[for="landing-hero-preview-analyze"]').click();
     await expect(page.getByText("Static worker resolving resources")).toBeVisible();
     await expect(page.getByRole("link", { name: "LaunchDiff home" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Documentation" })).toBeVisible();
+    await expect(
+      page.getByLabel("Landing page sections").getByRole("link", { name: "Documentation" })
+    ).toBeVisible();
     await expect(page.getByRole("link", { name: "Compare libraries" }).first()).toBeVisible();
     await expect(page.locator(".landing-feature-showcase__image")).toHaveCount(3);
     await expect
@@ -47,7 +49,10 @@ test.describe("landing page", () => {
     await expect(
       page.getByRole("heading", { name: "The review path is visible before analysis starts." })
     ).toBeVisible();
+    await expect(page.getByRole("list", { name: "Documentation timeline" })).toBeVisible();
+    await expect(page.getByText("Start to finish guide")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Public-only fetches" })).toBeVisible();
+    await expect(page.getByRole("contentinfo")).toBeVisible();
     await expectNoAxeViolations(page);
   });
 
