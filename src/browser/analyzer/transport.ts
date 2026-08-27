@@ -19,6 +19,15 @@ interface StartApiResponse {
   };
 }
 
+interface ApiErrorResponse {
+  error?: {
+    side?: "base" | "compare";
+    category?: string;
+    message?: string;
+    httpStatus?: number;
+  };
+}
+
 interface FetchApiResponse {
   results: Array<{
     requestedUrl: string;
@@ -63,7 +72,7 @@ export class ApiAnalysisTransport implements AnalysisTransport {
     });
 
     if (!response.ok) {
-      throw new Error("Analysis start request failed.");
+      throw new Error(await analysisStartFailureMessage(response));
     }
 
     const body = (await response.json()) as StartApiResponse;
@@ -142,6 +151,51 @@ export class ApiAnalysisTransport implements AnalysisTransport {
 
 function fetchWithGlobalScope(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   return globalThis.fetch(input, init);
+}
+
+async function analysisStartFailureMessage(response: Response): Promise<string> {
+  const body = await readApiError(response);
+  const message = body?.error?.message?.trim();
+
+  if (!message) {
+    return `Analysis start request failed with HTTP ${response.status}.`;
+  }
+
+  const sidePrefix = analysisSideLabel(body?.error?.side);
+  const statusSuffix =
+    typeof body?.error?.httpStatus === "number" ? ` (HTTP ${body.error.httpStatus})` : "";
+
+  return sidePrefix
+    ? `${sidePrefix} library could not be fetched: ${message}${statusSuffix}`
+    : message;
+}
+
+async function readApiError(response: Response): Promise<ApiErrorResponse | undefined> {
+  try {
+    const body = (await response.json()) as unknown;
+
+    if (!body || typeof body !== "object" || !("error" in body)) {
+      return undefined;
+    }
+
+    return body as ApiErrorResponse;
+  } catch {
+    return undefined;
+  }
+}
+
+function analysisSideLabel(
+  side: NonNullable<ApiErrorResponse["error"]>["side"]
+): string | undefined {
+  if (side === "base") {
+    return "Base";
+  }
+
+  if (side === "compare") {
+    return "Compare";
+  }
+
+  return undefined;
 }
 
 function fetchFailure(

@@ -55,8 +55,11 @@ npm run build
 Run the app locally:
 
 ```bash
+cp .env.example .env.local
 npm run dev
 ```
+
+Manual URL comparisons require `LAUNCHDIFF_TOKEN_SECRET` in `.env.local`; use a high-entropy local value.
 
 The comparison workspace is at `/compare`. The landing page is responsive; the comparison workspace intentionally requires at least `1024` CSS pixels.
 

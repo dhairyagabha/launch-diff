@@ -90,11 +90,59 @@ describe("API analysis transport", () => {
     expect(deferred.ok).toBe(true);
     expect(requestedPaths).toEqual(["/api/analysis/start", "/api/fetch"]);
   });
+
+  it("surfaces side-specific analysis start failures from the API response", async () => {
+    const transport = new ApiAnalysisTransport(async () =>
+      jsonResponse(
+        {
+          error: {
+            side: "base",
+            category: "http-error",
+            message: "Remote server returned an unsuccessful status.",
+            httpStatus: 404
+          }
+        },
+        502
+      )
+    );
+
+    await expect(
+      transport.startAnalysis({
+        baseUrl: "https://assets.example.test/base/launch.min.js",
+        compareUrl: "https://assets.example.test/compare/launch.min.js",
+        signal: new AbortController().signal
+      })
+    ).rejects.toThrow(
+      "Base library could not be fetched: Remote server returned an unsuccessful status. (HTTP 404)"
+    );
+  });
+
+  it("surfaces setup failures from the API response", async () => {
+    const transport = new ApiAnalysisTransport(async () =>
+      jsonResponse(
+        {
+          error: {
+            category: "invalid-token",
+            message: "Analysis token secret is not configured."
+          }
+        },
+        500
+      )
+    );
+
+    await expect(
+      transport.startAnalysis({
+        baseUrl: "https://assets.example.test/base/launch.min.js",
+        compareUrl: "https://assets.example.test/compare/launch.min.js",
+        signal: new AbortController().signal
+      })
+    ).rejects.toThrow("Analysis token secret is not configured.");
+  });
 });
 
-function jsonResponse(body: unknown): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: {
       "content-type": "application/json"
     }
