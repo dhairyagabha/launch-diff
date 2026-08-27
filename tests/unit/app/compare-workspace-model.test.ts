@@ -10,6 +10,7 @@ import {
   type ResourceType
 } from "@/core/launch-analyzer";
 import {
+  buildSanitizedDiagnosticReport,
   comparisonCounts,
   comparisonResourceKey,
   completenessBanner,
@@ -99,6 +100,50 @@ describe("compare workspace model", () => {
 
     expect(fileDisplayName(file)).toBe("launch.min.js");
     expect(fileDisplayName({ ...file, authoritativeUrl: "not a url" })).toBe("canonical");
+  });
+
+  it("builds a sanitized diagnostic report without URLs, names, config, diffs, or notes", () => {
+    const modified = comparison("rule", "RL-SECRET", "modified", {
+      name: "Secret Checkout Rule",
+      childName: "Private Analytics action"
+    });
+    const added = comparison("extension", "EX-SECRET", "added", {
+      name: "Secret Extension",
+      impacted: true
+    });
+    const result = {
+      ...comparisonResult([modified, added]),
+      warnings: [
+        {
+          id: "warning:secret",
+          severity: "warning" as const,
+          code: "deferred-fetch-failed",
+          message: "Secret Checkout Rule failed at https://private.example.test/secret.js"
+        }
+      ],
+      releaseNotes: "Secret Checkout Rule changed private source."
+    };
+    const report = buildSanitizedDiagnosticReport({
+      comparison: result,
+      inputMode: "saved-config",
+      workspacePhase: "ready",
+      activeTab: "files",
+      reviewProgress: { reviewed: 1, total: 2 },
+      browser: { family: "Chrome", majorVersion: "141" }
+    });
+
+    expect(report).toContain('"version": "0.1.0"');
+    expect(report).toContain('"saved-config"');
+    expect(report).toContain('"deferred-fetch-failed"');
+    expect(report).toContain('"Chrome"');
+    expect(report).not.toContain("https://");
+    expect(report).not.toContain("Secret Checkout Rule");
+    expect(report).not.toContain("Secret Extension");
+    expect(report).not.toContain("Private Analytics action");
+    expect(report).not.toContain("RL-SECRET");
+    expect(report).not.toContain("EX-SECRET");
+    expect(report).not.toContain("private source");
+    expect(report).not.toContain("secret.js");
   });
 });
 

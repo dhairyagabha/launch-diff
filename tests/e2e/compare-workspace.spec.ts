@@ -103,6 +103,26 @@ test.describe("comparison workspace acceptance", () => {
     await page.goto("/compare");
     await page.getByLabel("Use light theme").click();
     await runMockComparison(page);
+    await expect(page.getByRole("button", { name: "Retry failed resources" })).toHaveText(
+      "Retry"
+    );
+
+    await page.getByRole("button", { name: "Copy sanitized diagnostic report" }).click();
+    await expect(
+      page.getByRole("button", { name: "Sanitized diagnostic report copied" })
+    ).toBeVisible();
+    const diagnosticReport = await page.evaluate(() => navigator.clipboard.readText());
+    expect(diagnosticReport).toContain('"version": "0.1.0"');
+    expect(diagnosticReport).toContain('"inputMode": "direct-url"');
+    expect(diagnosticReport).toContain('"deferred-fetch-failed"');
+    expect(diagnosticReport).not.toContain("https://");
+    expect(diagnosticReport).not.toContain("Checkout Tracking Rule");
+    expect(diagnosticReport).not.toContain("Signup Rule");
+    expect(diagnosticReport).not.toContain("Legacy Cleanup Rule");
+    expect(diagnosticReport).not.toContain("Marketing Source");
+    expect(diagnosticReport).not.toContain("RL-CHECKOUT");
+    expect(diagnosticReport).not.toContain("RL-SIGNUP");
+    expect(diagnosticReport).not.toContain("# LaunchDiff Release Notes");
 
     await page.getByRole("button", { name: /Signup Rule/ }).click();
     await expect(page.getByRole("heading", { name: "Signup Rule" })).toBeVisible();

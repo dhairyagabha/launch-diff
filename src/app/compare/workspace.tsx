@@ -59,6 +59,7 @@ import {
   type SyntaxToken
 } from "@/core/launch-analyzer";
 import {
+  buildSanitizedDiagnosticReport,
   comparisonCounts,
   comparisonDisplayName,
   comparisonResourceKey,
@@ -151,6 +152,9 @@ export function CompareWorkspace() {
   const [collapsedFoldIds, setCollapsedFoldIds] = useState<Set<string>>(() => new Set());
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [diagnosticCopyState, setDiagnosticCopyState] = useState<"idle" | "copied" | "failed">(
+    "idle"
+  );
   const workerClientRef = useRef<AnalyzerWorkerClient | undefined>(undefined);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -413,6 +417,7 @@ export function CompareWorkspace() {
     setError(undefined);
     setProgress(undefined);
     setCopyState("idle");
+    setDiagnosticCopyState("idle");
     setPhase("running");
 
     const client = workerClientRef.current ?? createWorkerClient();
@@ -503,6 +508,28 @@ export function CompareWorkspace() {
     }
   }
 
+  async function copyDiagnosticReport() {
+    if (!comparison) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        buildSanitizedDiagnosticReport({
+          comparison,
+          inputMode: setupMode === "config" ? "saved-config" : "direct-url",
+          workspacePhase: phase,
+          activeTab,
+          reviewProgress: progressCount,
+          browser: browserDiagnostic()
+        })
+      );
+      setDiagnosticCopyState("copied");
+    } catch {
+      setDiagnosticCopyState("failed");
+    }
+  }
+
   function downloadReleaseNotes() {
     if (!comparison) {
       return;
@@ -575,6 +602,8 @@ export function CompareWorkspace() {
               onRefresh={() => void runAnalysis("refresh")}
               onRetry={() => void runAnalysis("retry")}
               onCancel={cancelAnalysis}
+              diagnosticCopyState={diagnosticCopyState}
+              onCopyDiagnostics={() => void copyDiagnosticReport()}
             />
             {error && <InlineBanner tone="danger" title="Analysis failed" description={error} />}
             {banner && (
@@ -844,6 +873,8 @@ function WorkspaceHeader(props: {
   onRefresh: () => void;
   onRetry: () => void;
   onCancel: () => void;
+  diagnosticCopyState: "idle" | "copied" | "failed";
+  onCopyDiagnostics: () => void;
 }) {
   return (
     <header className="compare-header">
@@ -889,13 +920,33 @@ function WorkspaceHeader(props: {
           </button>
         ) : (
           <>
-            <button className="compare-button" type="button" onClick={props.onRetry}>
+            <button
+              className="compare-button"
+              type="button"
+              aria-label="Retry failed resources"
+              title="Retry failed resources"
+              onClick={props.onRetry}
+            >
               <SyncIcon size={14} />
-              Retry Failed
+              Retry
             </button>
             <button className="compare-button" type="button" onClick={props.onRefresh}>
               <SyncIcon size={14} />
               Refresh
+            </button>
+            <button
+              className="compare-button"
+              type="button"
+              aria-label={diagnosticButtonLabel(props.diagnosticCopyState)}
+              title="Copy sanitized diagnostic report"
+              onClick={props.onCopyDiagnostics}
+            >
+              <CopyIcon size={14} />
+              {props.diagnosticCopyState === "copied"
+                ? "Copied"
+                : props.diagnosticCopyState === "failed"
+                  ? "Failed"
+                  : "Diagnostics"}
             </button>
           </>
         )}
@@ -942,6 +993,18 @@ function ThemeModeControl() {
       </button>
     </div>
   );
+}
+
+function diagnosticButtonLabel(state: "idle" | "copied" | "failed"): string {
+  if (state === "copied") {
+    return "Sanitized diagnostic report copied";
+  }
+
+  if (state === "failed") {
+    return "Sanitized diagnostic report copy failed";
+  }
+
+  return "Copy sanitized diagnostic report";
 }
 
 function InlineBanner(props: {
@@ -1823,6 +1886,31 @@ function formatProgress(progress: BrowserAnalysisProgress): string {
   }
 
   return `${progress.message ?? label} ${count.completed}${count.total === undefined ? "" : `/${count.total}`}`;
+}
+
+function browserDiagnostic(): { family: string; majorVersion?: string } {
+  const userAgent = navigator.userAgent;
+  const candidates: Array<[string, RegExp]> = [
+    ["Edge", /Edg\/(\d+)/],
+    ["Chrome", /Chrome\/(\d+)/],
+    ["Firefox", /Firefox\/(\d+)/],
+    ["Safari", /Version\/(\d+).*Safari/]
+  ];
+
+  for (const [family, pattern] of candidates) {
+    const match = pattern.exec(userAgent);
+
+    if (match?.[1]) {
+      return {
+        family,
+        majorVersion: match[1]
+      };
+    }
+  }
+
+  return {
+    family: "Unknown"
+  };
 }
 
 function shortenUrl(value: string): string {

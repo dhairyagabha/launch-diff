@@ -24,6 +24,20 @@ export interface WorkspaceFilters {
   viewedResourceKeys: Set<string>;
 }
 
+export interface SanitizedDiagnosticBrowser {
+  family: string;
+  majorVersion?: string;
+}
+
+export interface SanitizedDiagnosticInput {
+  comparison: ComparisonResult;
+  inputMode: "direct-url" | "saved-config";
+  workspacePhase: "setup" | "running" | "ready";
+  activeTab: ResultTab;
+  reviewProgress: { reviewed: number; total: number };
+  browser: SanitizedDiagnosticBrowser;
+}
+
 const RESOURCE_TYPE_ORDER: ResourceType[] = [
   "rule",
   "data-element",
@@ -214,4 +228,149 @@ export function fileDisplayName(file: ResolvedFile): string {
   } catch {
     return file.id;
   }
+}
+
+export function buildSanitizedDiagnosticReport(input: SanitizedDiagnosticInput): string {
+  const resourceCounts = comparisonCounts(input.comparison);
+
+  return JSON.stringify(
+    {
+      launchDiff: {
+        version: "0.1.0",
+        analyzerModelVersion: input.comparison.modelVersion
+      },
+      browser: {
+        family: input.browser.family,
+        ...(input.browser.majorVersion ? { majorVersion: input.browser.majorVersion } : {})
+      },
+      analysis: {
+        inputMode: input.inputMode,
+        workspacePhase: input.workspacePhase,
+        activeTab: input.activeTab
+      },
+      completeness: {
+        base: sanitizeCompleteness(input.comparison.base.completeness),
+        compare: sanitizeCompleteness(input.comparison.compare.completeness)
+      },
+      resources: {
+        counts: resourceCounts,
+        byType: countByResourceType(input.comparison.resources),
+        detailedDiffStates: countBy(input.comparison.resources, (comparison) => comparison.detailedDiffState),
+        structuredChangeKinds: countStructuredChangeKinds(input.comparison.resources)
+      },
+      review: input.reviewProgress,
+      files: {
+        base: summarizeFiles(input.comparison.base.files),
+        compare: summarizeFiles(input.comparison.compare.files)
+      },
+      warnings: {
+        total: input.comparison.warnings.length,
+        bySeverity: countBy(input.comparison.warnings, (warning) => warning.severity),
+        byCode: countBy(input.comparison.warnings, (warning) => warning.code)
+      },
+      matching: {
+        byMethod: countBy(input.comparison.resources, (comparison) => comparison.match?.method ?? "unmatched"),
+        byConfidence: countBy(
+          input.comparison.resources,
+          (comparison) => comparison.match?.confidence ?? "unmatched"
+        )
+      },
+      degradation: {
+        unknownResources: resourceCounts.unknown,
+        unmappedResources: countUnmappedResources(input.comparison.resources),
+        impactedResources: resourceCounts.impacted,
+        unresolvedDetailedDiffs: input.comparison.resources.filter(
+          (comparison) => comparison.detailedDiffState !== "ready"
+        ).length
+      }
+    },
+    null,
+    2
+  );
+}
+
+function sanitizeCompleteness(completeness: AnalysisCompleteness): AnalysisCompleteness {
+  return {
+    state: completeness.state,
+    discovered: completeness.discovered,
+    resolved: completeness.resolved,
+    failed: completeness.failed,
+    failureRate: completeness.failureRate,
+    ...(completeness.limitReached === undefined ? {} : { limitReached: completeness.limitReached })
+  };
+}
+
+function summarizeFiles(files: ResolvedFile[]): {
+  total: number;
+  byState: Record<string, number>;
+  failureCategories: Record<string, number>;
+} {
+  return {
+    total: files.length,
+    byState: countBy(files, (file) => file.state),
+    failureCategories: countBy(
+      files.filter((file) => file.state !== "resolved"),
+      (file) => failureCategory(file)
+    )
+  };
+}
+
+function failureCategory(file: ResolvedFile): string {
+  if (file.state === "skipped-limit" || file.state === "unsupported") {
+    return file.state;
+  }
+
+  const status = file.fetch.httpStatus;
+
+  if (status === undefined) {
+    return "unknown";
+  }
+
+  if (status === 429) {
+    return "http-429";
+  }
+
+  if (status >= 500) {
+    return "http-5xx";
+  }
+
+  if (status >= 400) {
+    return "http-4xx";
+  }
+
+  return "http-other";
+}
+
+function countByResourceType(resources: ResourceComparison[]): Record<ResourceType, number> {
+  return RESOURCE_TYPE_ORDER.reduce(
+    (counts, type) => ({
+      ...counts,
+      [type]: resources.filter(
+        (comparison) => (comparison.compare ?? comparison.base)?.identity.resourceType === type
+      ).length
+    }),
+    {} as Record<ResourceType, number>
+  );
+}
+
+function countStructuredChangeKinds(resources: ResourceComparison[]): Record<string, number> {
+  return countBy(
+    resources.flatMap((comparison) => comparison.structuredChanges),
+    (change) => change.kind
+  );
+}
+
+function countUnmappedResources(resources: ResourceComparison[]): number {
+  return resources.filter(
+    (comparison) => (comparison.compare ?? comparison.base)?.identity.resourceType === "unmapped"
+  ).length;
+}
+
+function countBy<T>(items: T[], keyForItem: (item: T) => string): Record<string, number> {
+  return items.reduce<Record<string, number>>((counts, item) => {
+    const key = keyForItem(item);
+    counts[key] = (counts[key] ?? 0) + 1;
+
+    return counts;
+  }, {});
 }

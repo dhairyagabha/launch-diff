@@ -195,6 +195,7 @@ a {
   font: inherit;
   font-size: 0.875rem;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
 }
 
