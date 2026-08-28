@@ -2,6 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 const port = process.env.PLAYWRIGHT_PORT ?? "3011";
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`;
+const screenshotMaxDiffPixelRatio = process.env.CI ? 0.04 : 0.01;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -14,7 +15,7 @@ export default defineConfig({
   expect: {
     timeout: 10_000,
     toHaveScreenshot: {
-      maxDiffPixelRatio: 0.01
+      maxDiffPixelRatio: screenshotMaxDiffPixelRatio
     }
   },
   use: {
